@@ -178,6 +178,22 @@ def fetch_price_releases(access_token: str, contract_id: str, limit: int = 60, o
     return data.get("data", [])
 
 
+def fetch_netback(access_token: str, fob_port_uuid: str, release: str, via: str | None = None,
+                  laden: float | None = None, ballast: float | None = None) -> dict:
+    """Fetch a single netback snapshot for a FoB port and release date."""
+    query_params = f"?fob-port={fob_port_uuid}"
+    if release is not None:
+        query_params += f"&release-date={release}"
+    if via is not None:
+        query_params += f"&via-point={via}"
+    if laden is not None:
+        query_params += f"&laden-congestion-days={laden}"
+    if ballast is not None:
+        query_params += f"&ballast-congestion-days={ballast}"
+    content = api_get(f"/v1.0/netbacks/{query_params}", access_token)
+    return content.get("data", {})
+
+
 def build_price_df(access_token: str, ticker: str, limit: int = 60) -> pd.DataFrame:
     releases = fetch_price_releases(access_token, ticker, limit=limit)
 

@@ -36,10 +36,31 @@ st.markdown(
 
 st.markdown("---")
 st.subheader("Included pages")
-st.markdown(
-    "- Run: Press - Weekly Arb Charts - Global\n"
-    "- Run: LNG Espresso\n"
-)
+
+with st.expander("📊 Press Charts", expanded=True):
+    st.markdown(
+        "- 📈 Weekly Arb Charts Global\n"
+        "- ☕ LNG Espresso\n"
+        "- 📊 Kpler Weekly Routes Regas\n"
+    )
+
+with st.expander("📥 Data Download", expanded=True):
+    st.markdown(
+        "- 🏭 Access Terminal Costs\n"
+        "- ⛽ Netbacks Analysis\n"
+        "- 🏢 DES Hub Netbacks\n"
+    )
+
+with st.expander("📊 Analytics Gallery", expanded=True):
+    st.markdown(
+        "- 💹 Breakevens vs Spot Freight\n"
+        "- 📈 FFA Seasonality\n"
+        "- 🌏 US Arb Historical\n"
+        "- 🏭 DES Hub Country Comparison\n"
+        "- 🛣️ Global Route Costs\n"
+        "- 📊 Spot Seasonality\n"
+        "- 📈 US Arb Month Tracker\n"
+    )
 
 st.caption(
     "Notes: Notebooks execute in their source directories. If they require credentials, ensure your environment has them available."
