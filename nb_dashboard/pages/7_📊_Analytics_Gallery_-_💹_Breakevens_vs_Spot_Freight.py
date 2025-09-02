@@ -185,22 +185,45 @@ if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
             ti = available_df[available_df["Ports"] == port]["Index"].iloc[0]
             my_ticker = tickers[ti]
             
-            # Fetch breakevens data
+            # Fetch breakevens data with debugging
+            st.write(f"Fetching breakevens for ticker: {my_ticker}, via: {my_via}")
+            
             break_df = fetch_breakevens(token, my_ticker, nea_via=my_via, format='csv')
+            
+            st.write("Raw breakevens data type:", type(break_df))
+            st.write("Is empty?", break_df.empty if hasattr(break_df, 'empty') else 'Not a DataFrame')
             
             if break_df.empty:
                 st.error("No breakevens data available for selected parameters.")
                 st.stop()
             
+            st.write("Breakevens DataFrame shape:", break_df.shape)
+            st.write("Breakevens DataFrame columns:", break_df.columns.tolist())
+            st.write("First few rows:")
+            st.dataframe(break_df.head())
+            
+            # Try to find any column with "release" or "date" in the name
+            date_columns = [col for col in break_df.columns if 'release' in col.lower() or 'date' in col.lower()]
+            st.write("Columns containing 'release' or 'date':", date_columns)
+            
             # Rename lastReleasedate to Release Date for consistency
             if 'lastReleasedate' in break_df.columns:
                 break_df['Release Date'] = pd.to_datetime(break_df['lastReleasedate'])
+                st.write("✅ Found and converted 'lastReleasedate' column")
             elif 'ReleaseDate' in break_df.columns:
                 break_df['Release Date'] = pd.to_datetime(break_df['ReleaseDate'])
+                st.write("✅ Found and converted 'ReleaseDate' column")
             elif 'releaseDate' in break_df.columns:
                 break_df['Release Date'] = pd.to_datetime(break_df['releaseDate'])
+                st.write("✅ Found and converted 'releaseDate' column")
+            elif date_columns:
+                # Use the first date-like column found
+                date_col = date_columns[0]
+                break_df['Release Date'] = pd.to_datetime(break_df[date_col])
+                st.write(f"✅ Using '{date_col}' as release date column")
             else:
                 st.error(f"Could not find release date column. Available columns: {break_df.columns.tolist()}")
+                st.error("Please check the API response structure.")
                 st.stop()
             
             # Get length for freight data limit
