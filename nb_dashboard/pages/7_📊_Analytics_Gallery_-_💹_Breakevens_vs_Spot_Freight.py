@@ -63,15 +63,23 @@ def fetch_breakevens(access_token, ticker, nea_via=None, nwe_via=None, format='c
     if nwe_via is not None:
         query_params += "&nwe-via-point={}".format(nwe_via)
     
-    content = api_get(f"/beta/netbacks/arb-breakevens/{query_params}", access_token)
-    
-    if format == 'json':
-        my_dict = content
-    else:
-        # For CSV format, we'll work with the JSON data and convert to DataFrame
-        my_dict = pd.DataFrame(content.get('data', []))
-    
-    return my_dict
+    try:
+        content = api_get(f"/beta/netbacks/arb-breakevens/{query_params}", access_token)
+        
+        if format == 'json':
+            return content
+        else:
+            # Convert JSON data to DataFrame
+            data_list = content.get('data', [])
+            if not data_list:
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(data_list)
+            return df
+            
+    except Exception as e:
+        st.error(f"Error fetching breakevens data: {e}")
+        return pd.DataFrame()
 
 def fetch_historical_price_releases(access_token, ticker, limit=4, offset=None, vessel=None):
     query_params = "?limit={}".format(limit)
@@ -183,8 +191,21 @@ if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
             if break_df.empty:
                 st.error("No breakevens data available for selected parameters.")
                 st.stop()
-                
-            break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
+            
+            # Debug: show columns to understand structure
+            st.write("Breakevens DataFrame columns:", break_df.columns.tolist())
+            st.write("Breakevens DataFrame sample:", break_df.head())
+            
+            # Check if ReleaseDate column exists, if not try alternatives
+            if 'ReleaseDate' in break_df.columns:
+                break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
+            elif 'releaseDate' in break_df.columns:
+                break_df['ReleaseDate'] = pd.to_datetime(break_df['releaseDate'])
+            elif 'release_date' in break_df.columns:
+                break_df['ReleaseDate'] = pd.to_datetime(break_df['release_date'])
+            else:
+                st.error(f"Could not find release date column. Available columns: {break_df.columns.tolist()}")
+                st.stop()
             
             # Get length for freight data limit
             length = len(break_df['ReleaseDate'].unique())
