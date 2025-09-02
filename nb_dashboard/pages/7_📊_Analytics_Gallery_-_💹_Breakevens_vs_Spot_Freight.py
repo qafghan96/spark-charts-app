@@ -181,7 +181,8 @@ if st.button("Generate Chart", type="primary"):
             
             # Fetch breakevens data
             break_df = fetch_breakevens(token, my_ticker, nea_via=my_via, format='csv')
-            break_df['Release Date'] = pd.to_datetime(break_df['Release Date'])
+            break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
+            break_df = break_df.rename(columns={'ReleaseDate': 'Release Date'})
             
             # Get length for freight data
             length = len(break_df['Release Date'].unique())
