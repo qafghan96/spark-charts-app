@@ -181,10 +181,10 @@ if st.button("Generate Chart", type="primary"):
             
             # Fetch breakevens data
             break_df = fetch_breakevens(token, my_ticker, nea_via=my_via, format='csv')
-            break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
+            break_df['Release Date'] = pd.to_datetime(break_df['ReleaseDate'])
             
             # Get length for freight data
-            length = len(break_df['ReleaseDate'].unique())
+            length = len(break_df['Release Date'].unique())
             
             # Fetch freight prices
             freight_df = fetch_prices(token, freight_ticker, length, my_vessel='174-2stroke')
@@ -194,7 +194,7 @@ if st.button("Generate Chart", type="primary"):
             
             # Merge data - simplified to match template
             freight_df['Release Date'] = pd.to_datetime(freight_df['Release Date'])
-            merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='ReleaseDate', how='inner')
+            merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='Release Date', how='inner')
             
             # Simplify merge_df to match template structure
             merge_df = merge_df[['Release Date', 'USDperday', 'FreightBreakevenUSDPerDay']].copy()
