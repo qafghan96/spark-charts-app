@@ -55,11 +55,6 @@ with st.expander("📊 Analytics Gallery", expanded=True):
     st.markdown(
         "- 💹 Breakevens vs Spot Freight\n"
         "- 📈 FFA Seasonality\n"
-        "- 🌏 US Arb Historical\n"
-        "- 🏭 DES Hub Country Comparison\n"
-        "- 🛣️ Global Route Costs\n"
-        "- 📊 Spot Seasonality\n"
-        "- 📈 US Arb Month Tracker\n"
     )
 
 st.caption(

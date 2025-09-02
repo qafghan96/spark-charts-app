@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import datetime
+from io import StringIO
 
 # Ensure we can import sibling module "utils.py" when run as a Streamlit page
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,86 +17,225 @@ from utils import (
     get_credentials,
     get_access_token,
     list_netbacks_reference,
-    netbacks_history,
     api_get,
-    build_price_df,
 )
 
 st.title("💹 US Arb Freight Breakevens vs Spot Freight Rates")
 
-st.caption("Compare US Arb Freight Breakevens with Spark30S Spot Freight Rates.")
+st.caption("Compare US Arb Freight Breakevens with Spot Freight Rates.")
 
 client_id, client_secret = get_credentials()
 if not client_id or not client_secret:
     st.error("Missing Spark API credentials. Set streamlit secrets 'spark.client_id' and 'spark.client_secret' (or env vars).")
     st.stop()
 
-scopes = "read:lng-freight-prices,read:routes,read:netbacks"
+scopes = "read:netbacks,read:access,read:prices,read:routes"
 token = get_access_token(client_id, client_secret, scopes=scopes)
 
 # Get netbacks reference data
 tickers, names, available_via, release_dates, _raw = list_netbacks_reference(token)
 
+# Helper functions from the notebook
+def format_store(available_via, fob_names, tickrs):
+    dict_store = {
+        "Index": [],
+        "Ports": [],
+        "Ticker": [],
+        "Available Via": []
+    }
+    
+    c = 0
+    for a in available_via:
+        if len(a) != 0:
+            dict_store['Index'].append(c)
+            dict_store['Ports'].append(fob_names[c])
+            dict_store['Ticker'].append(tickrs[c])
+            dict_store['Available Via'].append(available_via[c])
+        c += 1
+    
+    dict_df = pd.DataFrame(dict_store)
+    return dict_df
+
+def fetch_breakevens(access_token, ticker, nea_via=None, nwe_via=None, format='csv'):
+    query_params = "?fob-port={}".format(ticker)
+    if nea_via is not None:
+        query_params += "&nea-via-point={}".format(nea_via)
+    if nwe_via is not None:
+        query_params += "&nwe-via-point={}".format(nwe_via)
+    
+    content = api_get(f"/beta/netbacks/arb-breakevens/{query_params}", access_token)
+    
+    if format == 'json':
+        my_dict = content
+    else:
+        # For CSV format, we'll work with the JSON data and convert to DataFrame
+        my_dict = pd.DataFrame(content.get('data', []))
+    
+    return my_dict
+
+def fetch_historical_price_releases(access_token, ticker, limit=4, offset=None, vessel=None):
+    query_params = "?limit={}".format(limit)
+    if offset is not None:
+        query_params += "&offset={}".format(offset)
+    
+    if vessel is not None:
+        query_params += "&vessel-type={}".format(vessel)
+    
+    content = api_get(f"/v1.0/contracts/{ticker}/price-releases/{query_params}", access_token)
+    return content.get('data', [])
+
+def fetch_prices(access_token, ticker, my_lim, my_vessel=None):
+    my_dict_hist = fetch_historical_price_releases(access_token, ticker, limit=my_lim, vessel=my_vessel)
+    
+    release_dates = []
+    period_start = []
+    ticker_list = []
+    usd_day = []
+    usd_mmbtu = []
+    day_min = []
+    day_max = []
+    cal_month = []
+
+    for release in my_dict_hist:
+        release_date = release["releaseDate"]
+        ticker_list.append(release['contractId'])
+        release_dates.append(release_date)
+
+        data_points = release["data"][0]["dataPoints"]
+
+        for data_point in data_points:
+            period_start_at = data_point["deliveryPeriod"]["startAt"]
+            period_start.append(period_start_at)
+
+            usd_day.append(data_point['derivedPrices']['usdPerDay']['spark'])
+            day_min.append(data_point['derivedPrices']['usdPerDay']['sparkMin'])
+            day_max.append(data_point['derivedPrices']['usdPerDay']['sparkMax'])
+            usd_mmbtu.append(data_point['derivedPrices']['usdPerMMBtu']['spark'])
+            cal_month.append(datetime.datetime.strptime(period_start_at, '%Y-%m-%d').strftime('%b-%Y'))
+
+    historical_df = pd.DataFrame({
+        'ticker': ticker_list,
+        'Period Start': period_start,
+        'USDperday': usd_day,
+        'USDperdayMax': day_max,
+        'USDperdayMin': day_min,
+        'USDperMMBtu': usd_mmbtu,
+        'Release Date': release_dates
+    })
+
+    historical_df['USDperday'] = pd.to_numeric(historical_df['USDperday'])
+    historical_df['USDperdayMax'] = pd.to_numeric(historical_df['USDperdayMax'])
+    historical_df['USDperdayMin'] = pd.to_numeric(historical_df['USDperdayMin'])
+    historical_df['USDperMMBtu'] = pd.to_numeric(historical_df['USDperMMBtu'])
+    historical_df['Release Datetime'] = pd.to_datetime(historical_df['Release Date'])
+    
+    return historical_df
+
+# Create available ports dataframe
+available_df = format_store(available_via, names, tickers)
+
 # Configuration controls
 st.subheader("Configuration")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
+
 with col1:
-    port_options = {name: (uuid, vias) for uuid, name, vias in zip(tickers, names, available_via)}
-    selected_port = st.selectbox("Select FoB Port", options=list(port_options.keys()), 
-                                index=names.index("Sabine Pass") if "Sabine Pass" in names else 0)
-    uuid, vias = port_options[selected_port]
-    selected_via = st.selectbox("Via Point", options=vias or ["cogh"], index=0)
+    # Port selection (matching script's "port" variable)
+    available_ports = available_df["Ports"].tolist()
+    default_port_idx = 0
+    if "Sabine Pass" in available_ports:
+        default_port_idx = available_ports.index("Sabine Pass")
+    
+    port = st.selectbox("Select Port", options=available_ports, index=default_port_idx)
 
 with col2:
-    num_releases = st.slider("Number of releases", min_value=10, max_value=200, value=50, step=10)
-    vessel_type = st.selectbox("Vessel Type", options=["174-2stroke", "160-tfde"], index=0)
+    # Get available via points for selected port
+    port_row = available_df[available_df["Ports"] == port].iloc[0]
+    available_via_points = eval(port_row["Available Via"]) if isinstance(port_row["Available Via"], str) else port_row["Available Via"]
+    
+    # Via point selection (matching script's "my_via" variable)
+    if available_via_points:
+        default_via_idx = 0
+        if 'cogh' in available_via_points:
+            default_via_idx = available_via_points.index('cogh')
+        my_via = st.selectbox("Select Via Point", options=available_via_points, index=default_via_idx)
+    else:
+        my_via = st.text_input("Via Point", value="cogh")
 
-if st.button("Generate Chart", type="primary"):
-    with st.spinner("Fetching breakevens data..."):
-        # Fetch breakevens data
+with col3:
+    # Freight ticker selection (matching script's freight ticker usage)
+    freight_tickers = ['spark30s', 'spark25s']
+    freight_ticker = st.selectbox("Select Freight Ticker", options=freight_tickers, index=0)
+    
+    # Vessel type for freight ticker
+    vessel_type = st.selectbox("Vessel Type", options=['174-2stroke', '160-tfde'], index=0)
+
+if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
+    with st.spinner("Fetching data..."):
         try:
-            query_params = f"?fob-port={uuid}"
-            if selected_via:
-                query_params += f"&nea-via-point={selected_via}"
+            # Get ticker UUID for selected port
+            ti = available_df[available_df["Ports"] == port]["Index"].iloc[0]
+            my_ticker = tickers[ti]
             
-            breakevens_data = api_get(f"/beta/netbacks/arb-breakevens/{query_params}", token)
-            break_df = pd.DataFrame(breakevens_data['data'])
+            # Fetch breakevens data
+            break_df = fetch_breakevens(token, my_ticker, nea_via=my_via, format='csv')
+            
+            if break_df.empty:
+                st.error("No breakevens data available for selected parameters.")
+                st.stop()
+                
             break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
             
-            # Filter to front month only
+            # Get length for freight data limit
+            length = len(break_df['ReleaseDate'].unique())
+            
+            # Fetch spot freight prices
+            freight_df = fetch_prices(token, freight_ticker, length, my_vessel=vessel_type)
+            
+            if freight_df.empty:
+                st.error("No freight data available for selected ticker.")
+                st.stop()
+            
+            # Filter to front month breakevens only
             front_df = break_df[break_df['LoadMonthIndex'] == "M+1"].copy()
             
-        except Exception as e:
-            st.error(f"Error fetching breakevens data: {e}")
-            st.stop()
-
-    with st.spinner("Fetching spot freight prices..."):
-        # Fetch Spark30S data
-        try:
-            spark30_df = build_price_df(token, 'spark30s', limit=num_releases)
-            spark30_df = spark30_df[spark30_df['ticker'] == 'spark30s'].copy()
+            # Prepare data for merging
+            freight_df['Release Date'] = pd.to_datetime(freight_df['Release Date'])
+            merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='ReleaseDate', how='inner')
+            
+            if merge_df.empty:
+                st.warning("No overlapping data found between freight and breakevens data.")
+                st.stop()
             
         except Exception as e:
-            st.error(f"Error fetching spot freight data: {e}")
+            st.error(f"Error fetching data: {str(e)}")
             st.stop()
 
-    # Create visualization
+    # Create fig2 chart (the main result from the script)
     sns.set_style("whitegrid")
-    fig, ax = plt.subplots(figsize=(15, 7))
+    fig2, ax2 = plt.subplots(figsize=(15, 7))
 
-    # Plot the data
-    ax.plot(spark30_df['Release Date'], spark30_df['Spark'], 
-           color='#48C38D', linewidth=2.5, label='Spark30S (Atlantic)')
-    ax.plot(front_df['ReleaseDate'], front_df['FreightBreakevenUSDPerDay'], 
-           color='#4F41F4', linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
+    # Plot the lines
+    ax2.plot(merge_df['Release Date'], merge_df['USDperday'], 
+             color='#48C38D', linewidth=2.5, label=f'{freight_ticker.upper()} ({vessel_type})')
+    ax2.plot(merge_df['Release Date'], merge_df['FreightBreakevenUSDPerDay'], 
+             color='#4F41F4', linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
+
+    # Add conditional shading
+    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakevenUSDPerDay'],
+                     where=merge_df['USDperday'] > merge_df['FreightBreakevenUSDPerDay'], 
+                     facecolor='red', interpolate=True, alpha=0.05)
+
+    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakevenUSDPerDay'],
+                     where=merge_df['USDperday'] < merge_df['FreightBreakevenUSDPerDay'], 
+                     facecolor='green', interpolate=True, alpha=0.05)
 
     # Set limits and formatting
-    ax.set_xlim(datetime.datetime.today() - datetime.timedelta(days=380), 
-                datetime.datetime.today())
-    ax.set_ylim(-100000, 120000)
+    ax2.set_xlim(datetime.datetime.today() - datetime.timedelta(days=380), 
+                 datetime.datetime.today())
+    ax2.set_ylim(-100000, 120000)
 
-    plt.title(f'Spark30S (Atlantic) vs. US Arb [M+1] Freight Breakeven Level - {selected_port} via {selected_via}')
+    plt.title(f'{freight_ticker.upper()} vs. US Arb [M+1] Freight Breakeven Level - {port} via {my_via}')
     plt.ylabel('USD per Day')
     plt.xlabel('Release Date')
 
@@ -104,58 +244,43 @@ if st.button("Generate Chart", type="primary"):
     plt.legend()
     plt.tight_layout()
 
-    st.pyplot(fig)
+    st.pyplot(fig2)
 
-    # Show conditional shading chart
-    st.subheader("Chart with Conditional Shading")
+    # Display the merge_df dataframe as requested
+    st.subheader("Merged Dataset")
+    st.caption("Combined freight prices and breakeven data used in the chart above")
     
-    # Merge dataframes for conditional shading
-    spark30_df['Release Date'] = pd.to_datetime(spark30_df['Release Date'])
-    merge_df = pd.merge(spark30_df, front_df, left_on='Release Date', right_on='ReleaseDate', how='inner')
+    # Prepare display dataframe
+    display_df = merge_df[['Release Date', 'USDperday', 'FreightBreakevenUSDPerDay', 
+                          'ArbUSDPerMBBtu', 'LoadMonthIndex', 'FobPortSlug', 'NEAViaPoint']].copy()
+    
+    # Format columns for better display
+    display_df['USDperday'] = display_df['USDperday'].apply(lambda x: f"${x:,.0f}")
+    display_df['FreightBreakevenUSDPerDay'] = display_df['FreightBreakevenUSDPerDay'].apply(lambda x: f"${x:,.0f}")
+    display_df['ArbUSDPerMBBtu'] = display_df['ArbUSDPerMBBtu'].apply(lambda x: f"${x:.2f}")
+    
+    # Rename columns for clarity
+    display_df.columns = ['Release Date', 'Spot Freight (USD/day)', 'Breakeven Level (USD/day)', 
+                         'Arb (USD/MMBtu)', 'Load Month', 'FoB Port', 'Via Point']
+    
+    st.dataframe(display_df, use_container_width=True)
 
-    if not merge_df.empty:
-        fig2, ax2 = plt.subplots(figsize=(15, 7))
-
-        ax2.plot(merge_df['Release Date'], merge_df['Spark'], 
-                color='#48C38D', linewidth=2.5, label='Spark30S (Atlantic)')
-        ax2.plot(merge_df['Release Date'], merge_df['FreightBreakevenUSDPerDay'], 
-                color='#4F41F4', linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
-
-        # Add conditional shading
-        ax2.fill_between(merge_df['Release Date'], merge_df['Spark'], merge_df['FreightBreakevenUSDPerDay'],
-                        where=merge_df['Spark'] > merge_df['FreightBreakevenUSDPerDay'], 
-                        facecolor='red', interpolate=True, alpha=0.05)
-        
-        ax2.fill_between(merge_df['Release Date'], merge_df['Spark'], merge_df['FreightBreakevenUSDPerDay'],
-                        where=merge_df['Spark'] < merge_df['FreightBreakevenUSDPerDay'], 
-                        facecolor='green', interpolate=True, alpha=0.05)
-
-        ax2.set_xlim(datetime.datetime.today() - datetime.timedelta(days=380), 
-                    datetime.datetime.today())
-        ax2.set_ylim(-100000, 120000)
-
-        plt.title(f'Spark30S vs. US Arb Freight Breakeven with Conditional Shading - {selected_port} via {selected_via}')
-        plt.ylabel('USD per Day')
-        plt.xlabel('Release Date')
-
-        sns.despine(left=True, bottom=True)
-        plt.grid(True)
-        plt.legend()
-        plt.tight_layout()
-
-        st.pyplot(fig2)
-
-        # Display summary statistics
-        st.subheader("Summary Statistics")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Average Spark30S", f"${merge_df['Spark'].mean():,.0f}")
-        with col2:
-            st.metric("Average Breakeven", f"${merge_df['FreightBreakevenUSDPerDay'].mean():,.0f}")
-        with col3:
-            spread = merge_df['Spark'] - merge_df['FreightBreakevenUSDPerDay']
-            st.metric("Average Spread", f"${spread.mean():,.0f}")
+    # Summary statistics
+    st.subheader("Summary Statistics")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        avg_freight = merge_df['USDperday'].mean()
+        st.metric("Average Spot Freight", f"${avg_freight:,.0f}")
+    
+    with col2:
+        avg_breakeven = merge_df['FreightBreakevenUSDPerDay'].mean()
+        st.metric("Average Breakeven", f"${avg_breakeven:,.0f}")
+    
+    with col3:
+        spread = merge_df['USDperday'] - merge_df['FreightBreakevenUSDPerDay']
+        avg_spread = spread.mean()
+        st.metric("Average Spread", f"${avg_spread:,.0f}")
 
 st.markdown("---")
-st.caption("This chart compares US arbitrage freight breakevens with spot freight rates to identify market opportunities.")
+st.caption("This chart compares spot freight rates with US arbitrage freight breakevens, with green shading indicating when freight is below breakeven (favorable for arbitrage) and red shading when above breakeven.")
