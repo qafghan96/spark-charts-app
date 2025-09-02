@@ -192,23 +192,19 @@ if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
                 st.error("No breakevens data available for selected parameters.")
                 st.stop()
             
-            # Debug: show columns to understand structure
-            st.write("Breakevens DataFrame columns:", break_df.columns.tolist())
-            st.write("Breakevens DataFrame sample:", break_df.head())
-            
-            # Check if ReleaseDate column exists, if not try alternatives
-            if 'ReleaseDate' in break_df.columns:
-                break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
+            # Rename lastReleasedate to Release Date for consistency
+            if 'lastReleasedate' in break_df.columns:
+                break_df['Release Date'] = pd.to_datetime(break_df['lastReleasedate'])
+            elif 'ReleaseDate' in break_df.columns:
+                break_df['Release Date'] = pd.to_datetime(break_df['ReleaseDate'])
             elif 'releaseDate' in break_df.columns:
-                break_df['ReleaseDate'] = pd.to_datetime(break_df['releaseDate'])
-            elif 'release_date' in break_df.columns:
-                break_df['ReleaseDate'] = pd.to_datetime(break_df['release_date'])
+                break_df['Release Date'] = pd.to_datetime(break_df['releaseDate'])
             else:
                 st.error(f"Could not find release date column. Available columns: {break_df.columns.tolist()}")
                 st.stop()
             
             # Get length for freight data limit
-            length = len(break_df['ReleaseDate'].unique())
+            length = len(break_df['Release Date'].unique())
             
             # Fetch spot freight prices
             freight_df = fetch_prices(token, freight_ticker, length, my_vessel=vessel_type)
@@ -222,7 +218,7 @@ if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
             
             # Prepare data for merging
             freight_df['Release Date'] = pd.to_datetime(freight_df['Release Date'])
-            merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='ReleaseDate', how='inner')
+            merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='Release Date', how='inner')
             
             if merge_df.empty:
                 st.warning("No overlapping data found between freight and breakevens data.")
@@ -236,20 +232,30 @@ if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
     sns.set_style("whitegrid")
     fig2, ax2 = plt.subplots(figsize=(15, 7))
 
-    # Plot the lines
-    ax2.plot(merge_df['Release Date'], merge_df['USDperday'], 
-             color='#48C38D', linewidth=2.5, label=f'{freight_ticker.upper()} ({vessel_type})')
-    ax2.plot(merge_df['Release Date'], merge_df['FreightBreakevenUSDPerDay'], 
-             color='#4F41F4', linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
+    # Find the breakeven column
+    breakeven_col = None
+    for col in ['FreightBreakevenUSDPerDay', 'freightBreakevenUSDPerDay']:
+        if col in merge_df.columns:
+            breakeven_col = col
+            break
 
-    # Add conditional shading
-    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakevenUSDPerDay'],
-                     where=merge_df['USDperday'] > merge_df['FreightBreakevenUSDPerDay'], 
-                     facecolor='red', interpolate=True, alpha=0.05)
+    if breakeven_col and 'USDperday' in merge_df.columns:
+        # Plot the lines
+        ax2.plot(merge_df['Release Date'], merge_df['USDperday'], 
+                 color='#48C38D', linewidth=2.5, label=f'{freight_ticker.upper()} ({vessel_type})')
+        ax2.plot(merge_df['Release Date'], merge_df[breakeven_col], 
+                 color='#4F41F4', linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
 
-    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakevenUSDPerDay'],
-                     where=merge_df['USDperday'] < merge_df['FreightBreakevenUSDPerDay'], 
-                     facecolor='green', interpolate=True, alpha=0.05)
+        # Add conditional shading
+        ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df[breakeven_col],
+                         where=merge_df['USDperday'] > merge_df[breakeven_col], 
+                         facecolor='red', interpolate=True, alpha=0.05)
+
+        ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df[breakeven_col],
+                         where=merge_df['USDperday'] < merge_df[breakeven_col], 
+                         facecolor='green', interpolate=True, alpha=0.05)
+    else:
+        st.error("Required columns for plotting not found in merged data.")
 
     # Set limits and formatting
     ax2.set_xlim(datetime.datetime.today() - datetime.timedelta(days=380), 
@@ -271,18 +277,54 @@ if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
     st.subheader("Merged Dataset")
     st.caption("Combined freight prices and breakeven data used in the chart above")
     
-    # Prepare display dataframe
-    display_df = merge_df[['Release Date', 'USDperday', 'FreightBreakevenUSDPerDay', 
-                          'ArbUSDPerMBBtu', 'LoadMonthIndex', 'FobPortSlug', 'NEAViaPoint']].copy()
+    # First, let's see what columns are available in the merged dataframe
+    st.write("Available columns in merged dataset:", merge_df.columns.tolist())
+    
+    # Prepare display dataframe with available columns
+    display_columns = ['Release Date', 'USDperday']
+    
+    # Add columns that exist in the dataframe
+    possible_columns = ['FreightBreakevenUSDPerDay', 'freightBreakevenUSDPerDay',
+                       'ArbUSDPerMBBtu', 'arbUSDPerMBBtu', 
+                       'LoadMonthIndex', 'loadMonthIndex',
+                       'FobPortSlug', 'fobPortSlug',
+                       'NEAViaPoint', 'neaViaPoint']
+    
+    for col in possible_columns:
+        if col in merge_df.columns:
+            display_columns.append(col)
+    
+    display_df = merge_df[display_columns].copy()
     
     # Format columns for better display
-    display_df['USDperday'] = display_df['USDperday'].apply(lambda x: f"${x:,.0f}")
-    display_df['FreightBreakevenUSDPerDay'] = display_df['FreightBreakevenUSDPerDay'].apply(lambda x: f"${x:,.0f}")
-    display_df['ArbUSDPerMBBtu'] = display_df['ArbUSDPerMBBtu'].apply(lambda x: f"${x:.2f}")
+    if 'USDperday' in display_df.columns:
+        display_df['USDperday'] = display_df['USDperday'].apply(lambda x: f"${x:,.0f}")
     
-    # Rename columns for clarity
-    display_df.columns = ['Release Date', 'Spot Freight (USD/day)', 'Breakeven Level (USD/day)', 
-                         'Arb (USD/MMBtu)', 'Load Month', 'FoB Port', 'Via Point']
+    # Find and format the freight breakeven column
+    breakeven_col = None
+    for col in ['FreightBreakevenUSDPerDay', 'freightBreakevenUSDPerDay']:
+        if col in display_df.columns:
+            breakeven_col = col
+            display_df[col] = display_df[col].apply(lambda x: f"${x:,.0f}")
+            break
+    
+    # Find and format the arb column
+    arb_col = None
+    for col in ['ArbUSDPerMBBtu', 'arbUSDPerMBBtu']:
+        if col in display_df.columns:
+            arb_col = col
+            display_df[col] = display_df[col].apply(lambda x: f"${x:.2f}")
+            break
+    
+    # Rename columns for clarity - only rename columns that exist
+    new_column_names = {}
+    for old_col, new_col in zip(display_df.columns, 
+                               ['Release Date', 'Spot Freight (USD/day)', 'Breakeven Level (USD/day)', 
+                                'Arb (USD/MMBtu)', 'Load Month', 'FoB Port', 'Via Point']):
+        if old_col in display_df.columns:
+            new_column_names[old_col] = new_col
+    
+    display_df = display_df.rename(columns=new_column_names)
     
     st.dataframe(display_df, use_container_width=True)
 
@@ -291,17 +333,33 @@ if st.button("Generate Breakevens vs Spot Freight Chart", type="primary"):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        avg_freight = merge_df['USDperday'].mean()
-        st.metric("Average Spot Freight", f"${avg_freight:,.0f}")
+        if 'USDperday' in merge_df.columns:
+            avg_freight = merge_df['USDperday'].mean()
+            st.metric("Average Spot Freight", f"${avg_freight:,.0f}")
+        else:
+            st.metric("Average Spot Freight", "N/A")
     
     with col2:
-        avg_breakeven = merge_df['FreightBreakevenUSDPerDay'].mean()
-        st.metric("Average Breakeven", f"${avg_breakeven:,.0f}")
+        # Find the breakeven column
+        breakeven_col = None
+        for col in ['FreightBreakevenUSDPerDay', 'freightBreakevenUSDPerDay']:
+            if col in merge_df.columns:
+                breakeven_col = col
+                break
+        
+        if breakeven_col:
+            avg_breakeven = merge_df[breakeven_col].mean()
+            st.metric("Average Breakeven", f"${avg_breakeven:,.0f}")
+        else:
+            st.metric("Average Breakeven", "N/A")
     
     with col3:
-        spread = merge_df['USDperday'] - merge_df['FreightBreakevenUSDPerDay']
-        avg_spread = spread.mean()
-        st.metric("Average Spread", f"${avg_spread:,.0f}")
+        if 'USDperday' in merge_df.columns and breakeven_col:
+            spread = merge_df['USDperday'] - merge_df[breakeven_col]
+            avg_spread = spread.mean()
+            st.metric("Average Spread", f"${avg_spread:,.0f}")
+        else:
+            st.metric("Average Spread", "N/A")
 
 st.markdown("---")
 st.caption("This chart compares spot freight rates with US arbitrage freight breakevens, with green shading indicating when freight is below breakeven (favorable for arbitrage) and red shading when above breakeven.")
