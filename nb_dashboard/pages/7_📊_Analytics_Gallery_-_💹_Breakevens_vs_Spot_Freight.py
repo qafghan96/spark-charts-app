@@ -82,9 +82,8 @@ def fetch_breakevens(access_token, ticker, nea_via=None, nwe_via=None, format='c
     if format == 'json':
         my_dict = content['data']
     else:
-        # Convert to CSV-like DataFrame
-        data_str = json.dumps(content['data'])
-        my_dict = pd.read_json(StringIO(data_str))
+        # Convert JSON data to DataFrame directly
+        my_dict = pd.DataFrame(content['data'])
     
     return my_dict
 
@@ -193,9 +192,12 @@ if st.button("Generate Chart", type="primary"):
             # Filter front month breakevens
             front_df = break_df[break_df['LoadMonthIndex'] == "M+1"]
             
-            # Merge data
+            # Merge data - simplified to match template
             freight_df['Release Date'] = pd.to_datetime(freight_df['Release Date'])
             merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='ReleaseDate', how='inner')
+            
+            # Simplify merge_df to match template structure
+            merge_df = merge_df[['Release Date', 'USDperday', 'FreightBreakevenUSDPerDay']].copy()
             
         except Exception as e:
             st.error(f"Error: {str(e)}")
