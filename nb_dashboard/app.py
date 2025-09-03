@@ -57,6 +57,7 @@ with st.expander("📊 Analytics Gallery", expanded=True):
         "- 📈 FFA Seasonality\n"
         "- 🏭 DES Hub Netbacks WTP Country Comparison\n"
         "- 📈 Spot Seasonality\n"
+        "- ⛽ Netbacks Freight Hire Comparison\n"
     )
 
 st.caption(
