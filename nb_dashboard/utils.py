@@ -65,15 +65,35 @@ def get_access_token(client_id: str, client_secret: str, scopes: str) -> str:
     return content["accessToken"]
 
 
-def api_get(uri: str, access_token: str) -> dict:
+def api_get(uri: str, access_token: str, format: str = 'json'):
     url = f"{API_BASE_URL}{uri}"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Accept": "application/json",
-    }
+    
+    if format == 'json':
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+    elif format == 'csv':
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "text/csv"
+        }
+    else:
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        }
+    
     r = requests.get(url, headers=headers)
     r.raise_for_status()
-    return r.json()
+    
+    # Return response based on format
+    if format == 'json':
+        return r.json()
+    elif format == 'csv':
+        return r.content
+    else:
+        return r.json()
 
 
 def list_contracts(access_token: str) -> List[Tuple[str, str]]:

@@ -81,7 +81,7 @@ def fetch_breakevens(access_token, ticker, via=None, breakeven='freight', start=
         query_params += "&end={}".format(end)
 
     uri = "/v1.0/netbacks/arb-breakevens/{}".format(query_params)
-    content = api_get(uri, access_token)
+    content = api_get(uri, access_token, format=format)
     
     if format == 'json':
         my_dict = content['data']
