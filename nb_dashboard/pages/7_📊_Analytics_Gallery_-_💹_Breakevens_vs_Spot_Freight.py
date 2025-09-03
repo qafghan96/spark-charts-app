@@ -179,7 +179,25 @@ if st.button("Generate Chart", type="primary"):
             
             # Fetch breakevens data
             break_df = fetch_breakevens(token, my_ticker, via=my_via, breakeven='freight', format='csv')
-            break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
+            
+            # Debug: show actual columns and data
+            st.write("break_df columns:", break_df.columns.tolist())
+            st.write("break_df sample:")
+            st.dataframe(break_df.head())
+            
+            # Find the correct date column name
+            date_column = None
+            for col in break_df.columns:
+                if 'date' in col.lower() or 'release' in col.lower():
+                    date_column = col
+                    break
+            
+            if date_column:
+                break_df['ReleaseDate'] = pd.to_datetime(break_df[date_column])
+                st.write(f"Using '{date_column}' as the date column")
+            else:
+                st.error("No date column found in breakevens data")
+                st.stop()
             
             # Get length for freight data
             length = len(break_df['ReleaseDate'].unique())
