@@ -221,7 +221,7 @@ if st.button("Generate Analysis", type="primary"):
             
             for t in terms2:
                 if t is not None:
-                    tdf = hdf[(hdf['Terminal'] == t) & (hdf['Month Index'] == month)][['Release Date', 'DES Hub Netback - TTF Basis - Var Regas Costs Only']]
+                    tdf = hdf[(hdf['Terminal'] == t) & (hdf['Month Index'] == month)][['Release Date', 'Delivery Month', 'DES Hub Netback - TTF Basis - Var Regas Costs Only']]
                     month_df = month_df.merge(tdf, on='Release Date', how='left')
                     month_df = month_df.rename(columns={'DES Hub Netback - TTF Basis - Var Regas Costs Only': t})
             
@@ -253,51 +253,124 @@ if st.button("Generate Analysis", type="primary"):
                 countries_df[c + ' Min'] = wtp_df[terminal_country_dict[c]].min(axis=1)
                 countries_df[c + ' Max'] = wtp_df[terminal_country_dict[c]].max(axis=1)
             
+            # Store data in session state
+            st.session_state['wtp_df'] = wtp_df
+            st.session_state['countries_df'] = countries_df
+            st.session_state['deshub_terms'] = deshub_terms
+            st.session_state['countries'] = countries
+            st.session_state['month'] = month
+            st.session_state['analysis_type'] = analysis_type
+            
         except Exception as e:
             st.error(f"Error fetching data: {str(e)}")
             st.stop()
 
-    if analysis_type == "By Terminal":
+# Display data and chart controls if data exists
+if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
+    wtp_df = st.session_state['wtp_df']
+    countries_df = st.session_state['countries_df']
+    deshub_terms = st.session_state['deshub_terms']
+    countries = st.session_state['countries']
+    stored_month = st.session_state['month']
+    stored_analysis_type = st.session_state['analysis_type']
+    
+    if stored_analysis_type == "By Terminal":
         st.subheader("WTP DataFrame (By Terminal)")
         st.dataframe(wtp_df, use_container_width=True)
         
-        # Terminal selection for chart
-        st.subheader("Terminal Chart")
-        selected_terminals = st.multiselect(
-            "Select terminals to chart",
-            options=deshub_terms,
-            default=deshub_terms[:3],
-            help="Select which terminals to display in the chart"
-        )
+        # Chart Configuration
+        st.subheader("Chart Configuration")
         
-        if selected_terminals:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            selected_terminals = st.multiselect(
+                "Select terminals to chart",
+                options=deshub_terms,
+                default=deshub_terms[:3],
+                help="Select which terminals to display in the chart"
+            )
+        
+        with col2:
+            # Date range controls
+            st.write("**Chart Date Range**")
+            col_start, col_end = st.columns(2)
+            
+            with col_start:
+                start_date = st.date_input(
+                    "Start Date", 
+                    value=wtp_df['Release Date'].min().date(),
+                    min_value=wtp_df['Release Date'].min().date(),
+                    max_value=wtp_df['Release Date'].max().date(),
+                    help="Start date for the chart display range"
+                )
+            
+            with col_end:
+                end_date = st.date_input(
+                    "End Date", 
+                    value=wtp_df['Release Date'].max().date(),
+                    min_value=wtp_df['Release Date'].min().date(),
+                    max_value=wtp_df['Release Date'].max().date(),
+                    help="End date for the chart display range"
+                )
+        
+        if st.button("Generate Terminal Chart", type="secondary") and selected_terminals:
+            # Convert date inputs to datetime for filtering
+            start_datetime = pd.Timestamp(start_date)
+            end_datetime = pd.Timestamp(end_date)
+            
+            # Filter data to the selected date range
+            date_filtered_df = wtp_df[
+                (wtp_df['Release Date'] >= start_datetime) & 
+                (wtp_df['Release Date'] <= end_datetime)
+            ]
+            
             sns.set_style("whitegrid")
             fig, ax = plt.subplots(figsize=(15, 7))
             
-            ax.hlines(0, wtp_df['Release Date'].iloc[-1], wtp_df['Release Date'].iloc[0], color='grey')
+            ax.hlines(0, date_filtered_df['Release Date'].min(), date_filtered_df['Release Date'].max(), 
+                     color='grey', linewidth=1)
             
             colors = plt.cm.tab10(np.linspace(0, 1, len(selected_terminals)))
             
+            # Plot data and collect y-values for auto-scaling
+            all_y_values = []
             for i, terminal in enumerate(selected_terminals):
-                ax.plot(wtp_df['Release Date'], wtp_df[terminal], 
-                       linewidth=2.0, label=terminal, color=colors[i])
-                ax.scatter(wtp_df['Release Date'].iloc[0], wtp_df[terminal].iloc[0], 
-                          color=colors[i], marker='o', s=80)
+                terminal_data = date_filtered_df[terminal].dropna()
+                if not terminal_data.empty:
+                    all_y_values.extend(terminal_data.tolist())
+                    ax.plot(date_filtered_df['Release Date'], date_filtered_df[terminal], 
+                           linewidth=2.0, label=terminal, color=colors[i])
+                    # Highlight latest point
+                    latest_idx = date_filtered_df['Release Date'].idxmax()
+                    if not pd.isna(date_filtered_df.loc[latest_idx, terminal]):
+                        ax.scatter(date_filtered_df.loc[latest_idx, 'Release Date'], 
+                                 date_filtered_df.loc[latest_idx, terminal], 
+                                 color=colors[i], marker='o', s=80)
             
-            negrange = [wtp_df['Release Date'].iloc[-1] - pd.Timedelta(20, unit='day'), 
-                       wtp_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')]
+            # Auto-scale y-axis based on filtered data
+            if all_y_values:
+                y_min = min(all_y_values)
+                y_max = max(all_y_values)
+                y_range = y_max - y_min
+                padding = y_range * 0.1 if y_range > 0 else 0.1
+                y_min_padded = y_min - padding
+                y_max_padded = y_max + padding
+                ax.set_ylim(y_min_padded, y_max_padded)
             
-            ax.plot(negrange, [-2.0, -2.0], color='red', alpha=0.05)
-            ax.plot(negrange, [0, 0], color='red', alpha=0.05)
-            ax.fill_between(negrange, 0, -2.0, color='red', alpha=0.05)
+            # Set x-axis limits
+            ax.set_xlim(start_datetime, end_datetime)
             
-            plt.xlim([wtp_df['Release Date'].iloc[-1] - pd.Timedelta(7, unit='day'), 
-                     wtp_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')])
-            plt.ylim(-1.7, 1)
+            # Negative shading
+            if all_y_values and min(all_y_values) < 0:
+                ax.fill_between([start_datetime, end_datetime], 
+                               0, min(y_min_padded, -0.1), 
+                               color='red', alpha=0.05)
             
-            plt.title(f'Terminal WTP - {month}')
-            plt.legend()
-            plt.grid()
+            plt.title(f'Terminal WTP - {stored_month}')
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
             sns.despine(left=True, bottom=True)
             
             st.pyplot(fig)
@@ -306,53 +379,129 @@ if st.button("Generate Analysis", type="primary"):
         st.subheader("WTP DataFrame (By Country)")
         st.dataframe(countries_df, use_container_width=True)
         
-        # Country selection for chart
-        st.subheader("Country Chart")
-        selected_countries = st.multiselect(
-            "Select countries to chart",
-            options=countries,
-            default=countries[:3],
-            help="Select which countries to display in the chart"
-        )
+        # Chart Configuration
+        st.subheader("Chart Configuration")
         
-        if selected_countries:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            selected_countries = st.multiselect(
+                "Select countries to chart",
+                options=countries,
+                default=countries[:3],
+                help="Select which countries to display in the chart"
+            )
+        
+        with col2:
+            # Date range controls
+            st.write("**Chart Date Range**")
+            col_start, col_end = st.columns(2)
+            
+            with col_start:
+                start_date = st.date_input(
+                    "Start Date", 
+                    value=countries_df['Release Date'].min().date(),
+                    min_value=countries_df['Release Date'].min().date(),
+                    max_value=countries_df['Release Date'].max().date(),
+                    help="Start date for the chart display range",
+                    key="country_start_date"
+                )
+            
+            with col_end:
+                end_date = st.date_input(
+                    "End Date", 
+                    value=countries_df['Release Date'].max().date(),
+                    min_value=countries_df['Release Date'].min().date(),
+                    max_value=countries_df['Release Date'].max().date(),
+                    help="End date for the chart display range",
+                    key="country_end_date"
+                )
+        
+        if st.button("Generate Country Chart", type="secondary") and selected_countries:
+            # Convert date inputs to datetime for filtering
+            start_datetime = pd.Timestamp(start_date)
+            end_datetime = pd.Timestamp(end_date)
+            
+            # Filter data to the selected date range
+            date_filtered_df = countries_df[
+                (countries_df['Release Date'] >= start_datetime) & 
+                (countries_df['Release Date'] <= end_datetime)
+            ]
+            
             sns.set_style("whitegrid")
             fig, ax = plt.subplots(figsize=(15, 7))
             
-            ax.hlines(0, countries_df['Release Date'].iloc[-1], countries_df['Release Date'].iloc[0], color='grey')
+            ax.hlines(0, date_filtered_df['Release Date'].min(), date_filtered_df['Release Date'].max(), 
+                     color='grey', linewidth=1)
             
             colors = plt.cm.tab10(np.linspace(0, 1, len(selected_countries)))
             
-            st.write(f"Latest Assessment: {countries_df['Release Date'].iloc[0]}")
+            st.write(f"**Latest Assessment:** {date_filtered_df['Release Date'].max().strftime('%Y-%m-%d')}")
             
+            # Plot data and collect y-values for auto-scaling
+            all_y_values = []
             for i, country in enumerate(selected_countries):
-                ax.scatter(countries_df['Release Date'].iloc[0], countries_df[country + ' Ave'].iloc[0], 
-                          color=colors[i], marker='o', s=80)
-                st.write(f"{country} = {countries_df[country + ' Ave'].iloc[0]:.3f}")
+                country_ave = country + ' Ave'
+                country_min = country + ' Min'
+                country_max = country + ' Max'
                 
-                ax.plot(countries_df['Release Date'], countries_df[country + ' Ave'], 
+                # Collect y-values for scaling
+                ave_data = date_filtered_df[country_ave].dropna()
+                min_data = date_filtered_df[country_min].dropna()
+                max_data = date_filtered_df[country_max].dropna()
+                
+                if not ave_data.empty:
+                    all_y_values.extend(ave_data.tolist())
+                if not min_data.empty:
+                    all_y_values.extend(min_data.tolist())
+                if not max_data.empty:
+                    all_y_values.extend(max_data.tolist())
+                
+                # Plot average line
+                ax.plot(date_filtered_df['Release Date'], date_filtered_df[country_ave], 
                        linewidth=2.0, label=country, color=colors[i])
-                ax.plot(countries_df['Release Date'], countries_df[country + ' Min'], 
+                
+                # Plot min/max range
+                ax.plot(date_filtered_df['Release Date'], date_filtered_df[country_min], 
                        linewidth=1.0, alpha=0.06, color=colors[i])
-                ax.plot(countries_df['Release Date'], countries_df[country + ' Max'], 
+                ax.plot(date_filtered_df['Release Date'], date_filtered_df[country_max], 
                        linewidth=1.0, alpha=0.06, color=colors[i])
-                ax.fill_between(countries_df['Release Date'], countries_df[country + ' Min'], 
-                               countries_df[country + ' Max'], alpha=0.2, color=colors[i])
+                ax.fill_between(date_filtered_df['Release Date'], 
+                               date_filtered_df[country_min], 
+                               date_filtered_df[country_max], 
+                               alpha=0.2, color=colors[i])
+                
+                # Highlight latest point and show value
+                latest_idx = date_filtered_df['Release Date'].idxmax()
+                if not pd.isna(date_filtered_df.loc[latest_idx, country_ave]):
+                    ax.scatter(date_filtered_df.loc[latest_idx, 'Release Date'], 
+                             date_filtered_df.loc[latest_idx, country_ave], 
+                             color=colors[i], marker='o', s=80)
+                    st.write(f"**{country}:** {date_filtered_df.loc[latest_idx, country_ave]:.3f}")
             
-            negrange = [countries_df['Release Date'].iloc[-1] - pd.Timedelta(20, unit='day'), 
-                       countries_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')]
+            # Auto-scale y-axis based on filtered data
+            if all_y_values:
+                y_min = min(all_y_values)
+                y_max = max(all_y_values)
+                y_range = y_max - y_min
+                padding = y_range * 0.1 if y_range > 0 else 0.1
+                y_min_padded = y_min - padding
+                y_max_padded = y_max + padding
+                ax.set_ylim(y_min_padded, y_max_padded)
             
-            ax.plot(negrange, [-2.0, -2.0], color='red', alpha=0.05)
-            ax.plot(negrange, [0, 0], color='red', alpha=0.05)
-            ax.fill_between(negrange, 0, -2.0, color='red', alpha=0.05)
+            # Set x-axis limits
+            ax.set_xlim(start_datetime, end_datetime)
             
-            plt.xlim([countries_df['Release Date'].iloc[-1] - pd.Timedelta(7, unit='day'), 
-                     countries_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')])
-            plt.ylim(-1.7, 1)
+            # Negative shading
+            if all_y_values and min(all_y_values) < 0:
+                ax.fill_between([start_datetime, end_datetime], 
+                               0, min(y_min_padded, -0.1), 
+                               color='red', alpha=0.05)
             
-            plt.title(f'Country Average WTP & Range - {month}')
-            plt.legend()
-            plt.grid()
+            plt.title(f'Country Average WTP & Range - {stored_month}')
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
             sns.despine(left=True, bottom=True)
             
             st.pyplot(fig)
