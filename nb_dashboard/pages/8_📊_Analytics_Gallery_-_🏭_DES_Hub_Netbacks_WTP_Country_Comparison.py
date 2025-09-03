@@ -221,7 +221,7 @@ if st.button("Generate Analysis", type="primary"):
             
             for t in terms2:
                 if t is not None:
-                    tdf = hdf[(hdf['Terminal'] == t) & (hdf['Month Index'] == month)][['Release Date', 'Delivery Month', 'DES Hub Netback - TTF Basis - Var Regas Costs Only']]
+                    tdf = hdf[(hdf['Terminal'] == t) & (hdf['Month Index'] == month)][['Release Date', 'DES Hub Netback - TTF Basis - Var Regas Costs Only']]
                     month_df = month_df.merge(tdf, on='Release Date', how='left')
                     month_df = month_df.rename(columns={'DES Hub Netback - TTF Basis - Var Regas Costs Only': t})
             
