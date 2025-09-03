@@ -163,7 +163,7 @@ if st.button("Generate Seasonality Analysis", type="primary"):
     with st.spinner("Fetching data..."):
         try:
             # Get contract ticker
-            ticker = contract_type.lower() + 's'
+            ticker = contract_type.lower()
             
             # Fetch price data
             price_df = fetch_prices(token, ticker, data_limit, my_vessel=vessel_type)
