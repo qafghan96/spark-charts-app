@@ -219,12 +219,62 @@ if 'price_df' in st.session_state:
         show_range = st.checkbox("Show Min/Max Range", value=True,
                                help="Show min/max price range for the highlighted year")
         
+        # Chart range controls
+        st.write("**Chart Range (Months)**")
+        col_month_start, col_month_end = st.columns(2)
+        
+        month_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December']
+        
+        with col_month_start:
+            start_month = st.selectbox("Start Month", options=month_names, index=0,
+                                     help="First month to display on chart")
+        
+        with col_month_end:
+            end_month = st.selectbox("End Month", options=month_names, index=11,
+                                   help="Last month to display on chart")
+        
+        # Y-axis controls
+        st.write("**Y-Axis Range**")
         auto_scale_y = st.checkbox("Auto-scale Y-axis", value=True,
                                  help="Automatically scale Y-axis based on selected data")
+        
+        if not auto_scale_y:
+            col_y_min, col_y_max = st.columns(2)
+            with col_y_min:
+                y_min_manual = st.number_input("Y-axis Min ($)", value=0, step=5000,
+                                             help="Minimum value for Y-axis")
+            with col_y_max:
+                y_max_manual = st.number_input("Y-axis Max ($)", value=100000, step=5000,
+                                             help="Maximum value for Y-axis")
     
     if st.button("Generate Chart", type="secondary") and selected_years:
+        # Convert month names to numbers for filtering
+        start_month_num = month_names.index(start_month) + 1
+        end_month_num = month_names.index(end_month) + 1
+        
         # Filter data to selected years
-        filtered_df = price_df[price_df['Year'].isin(selected_years)]
+        filtered_df = price_df[price_df['Year'].isin(selected_years)].copy()
+        
+        # Filter by month range
+        filtered_df['Month_num'] = filtered_df['Month'].astype(int)
+        
+        if start_month_num <= end_month_num:
+            # Normal range (e.g., Jan to Jun)
+            month_filtered_df = filtered_df[
+                (filtered_df['Month_num'] >= start_month_num) & 
+                (filtered_df['Month_num'] <= end_month_num)
+            ]
+        else:
+            # Cross-year range (e.g., Oct to Mar)
+            month_filtered_df = filtered_df[
+                (filtered_df['Month_num'] >= start_month_num) | 
+                (filtered_df['Month_num'] <= end_month_num)
+            ]
+        
+        if month_filtered_df.empty:
+            st.warning("No data available for the selected month range and years.")
+            st.stop()
         
         sns.set_style("whitegrid")
         fig, ax = plt.subplots(figsize=(15, 9))
@@ -234,8 +284,11 @@ if 'price_df' in st.session_state:
         
         # Plot data for each year
         for y, year in enumerate(year_list):
-            hdf = filtered_df[filtered_df['Year'] == year]
+            hdf = month_filtered_df[month_filtered_df['Year'] == year]
             
+            if hdf.empty:
+                continue
+                
             if year == highlight_year:
                 # Highlight the selected year
                 ax.plot(hdf['Day of Year'], hdf['USDperday'], 
@@ -254,38 +307,72 @@ if 'price_df' in st.session_state:
                        alpha=0.4, label=year, linewidth=1.5)
         
         # Set title and labels
-        ax.set_title(f'Yearly Comparison of {stored_contract_type} ({stored_vessel_type})', fontsize=16)
+        month_range_text = f"{start_month} to {end_month}" if start_month != end_month else start_month
+        ax.set_title(f'Yearly Comparison of {stored_contract_type} ({stored_vessel_type}) - {month_range_text}', fontsize=16)
         plt.xlabel('Date (Day of Year)', fontsize=12)
         plt.ylabel('USD per day', fontsize=12)
         plt.legend()
         
-        # Set x-axis ticks and labels based on chart style
-        if chart_style == "Monthly Labels":
-            xlabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Year End']
-            xpos = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 365]
-        else:  # Bimonthly Labels
-            xlabels = ['January', 'March', 'May', 'July', 'September', 'November', 'Year End']
-            xpos = [1, 60, 121, 182, 244, 305, 365]
+        # Calculate day of year ranges for month filtering
+        start_day_approx = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335][start_month_num - 1]
+        end_day_approx = [31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365][end_month_num - 1]
         
-        plt.xticks(xpos, xlabels, rotation=45 if chart_style == "Monthly Labels" else 0)
+        # Set x-axis limits based on month range
+        if start_month_num <= end_month_num:
+            x_min = start_day_approx
+            x_max = end_day_approx
+        else:
+            # For cross-year ranges, show full year but highlight the range
+            x_min = 1
+            x_max = 365
+        
+        # Set x-axis ticks and labels based on chart style and month range
+        if chart_style == "Monthly Labels":
+            all_xlabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            all_xpos = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+        else:  # Bimonthly Labels
+            all_xlabels = ['Jan', 'Mar', 'May', 'Jul', 'Sep', 'Nov']
+            all_xpos = [1, 60, 121, 182, 244, 305]
+        
+        # Filter ticks to show only relevant months
+        if start_month_num <= end_month_num:
+            if chart_style == "Monthly Labels":
+                tick_indices = range(start_month_num - 1, end_month_num)
+            else:
+                tick_indices = [i for i in range(0, 6) if (i * 2 + 1) >= start_month_num and (i * 2 + 1) <= end_month_num]
+        else:
+            # Cross-year: show all ticks
+            tick_indices = range(len(all_xlabels))
+        
+        filtered_xlabels = [all_xlabels[i] for i in tick_indices]
+        filtered_xpos = [all_xpos[i] for i in tick_indices]
+        
+        plt.xticks(filtered_xpos, filtered_xlabels, rotation=45 if chart_style == "Monthly Labels" else 0)
+        
+        # Set x-axis limits
+        ax.set_xlim(x_min, x_max)
         
         # Format y-axis with currency
         current_values = plt.gca().get_yticks()
         plt.gca().set_yticklabels(['$ {:,.0f}'.format(x) for x in current_values])
         
-        # Auto-scale y-axis if requested
+        # Y-axis scaling
         if auto_scale_y:
-            y_values = filtered_df['USDperday'].dropna()
+            y_values = month_filtered_df['USDperday'].dropna()
             if show_range and highlight_year in selected_years:
-                highlight_df = filtered_df[filtered_df['Year'] == highlight_year]
-                y_values_with_range = pd.concat([
-                    y_values, 
-                    highlight_df['USDperdayMin'].dropna(),
-                    highlight_df['USDperdayMax'].dropna()
-                ])
-                y_min = y_values_with_range.min()
-                y_max = y_values_with_range.max()
+                highlight_df = month_filtered_df[month_filtered_df['Year'] == highlight_year]
+                if not highlight_df.empty:
+                    y_values_with_range = pd.concat([
+                        y_values, 
+                        highlight_df['USDperdayMin'].dropna(),
+                        highlight_df['USDperdayMax'].dropna()
+                    ])
+                    y_min = y_values_with_range.min()
+                    y_max = y_values_with_range.max()
+                else:
+                    y_min = y_values.min()
+                    y_max = y_values.max()
             else:
                 y_min = y_values.min()
                 y_max = y_values.max()
@@ -293,6 +380,9 @@ if 'price_df' in st.session_state:
             y_range = y_max - y_min
             padding = y_range * 0.1 if y_range > 0 else 1000
             plt.ylim(max(0, y_min - padding), y_max + padding)
+        else:
+            # Manual Y-axis scaling
+            plt.ylim(y_min_manual, y_max_manual)
         
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
@@ -307,18 +397,19 @@ if 'price_df' in st.session_state:
         
         with col1:
             st.metric("Total Years", len(selected_years))
-            st.metric("Total Data Points", len(filtered_df))
+            st.metric("Total Data Points", len(month_filtered_df))
+            st.metric("Month Range", month_range_text)
         
         with col2:
             if highlight_year in selected_years:
-                highlight_data = filtered_df[filtered_df['Year'] == highlight_year]['USDperday']
+                highlight_data = month_filtered_df[month_filtered_df['Year'] == highlight_year]['USDperday']
                 if not highlight_data.empty:
                     st.metric(f"{highlight_year} Average", f"${highlight_data.mean():,.0f}")
                     st.metric(f"{highlight_year} Range", 
                             f"${highlight_data.min():,.0f} - ${highlight_data.max():,.0f}")
         
         with col3:
-            all_data = filtered_df['USDperday']
+            all_data = month_filtered_df['USDperday']
             if not all_data.empty:
                 st.metric("Overall Average", f"${all_data.mean():,.0f}")
                 st.metric("Overall Range", f"${all_data.min():,.0f} - ${all_data.max():,.0f}")
