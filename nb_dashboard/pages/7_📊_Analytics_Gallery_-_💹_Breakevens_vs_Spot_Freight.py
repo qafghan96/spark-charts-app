@@ -87,7 +87,8 @@ def fetch_breakevens(access_token, ticker, via=None, breakeven='freight', start=
         my_dict = content['data']
     else:
         # For CSV format, convert the data to DataFrame
-        my_dict = pd.DataFrame(content['data'])
+        my_dict_temp = content.decode('utf-8')   
+        my_dict = pd.read_csv(StringIO(my_dict))
 
     return my_dict
 
