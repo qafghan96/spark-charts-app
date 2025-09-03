@@ -379,6 +379,15 @@ if 'netbacks_df' in st.session_state:
         colors = sns.color_palette("husl", len(percentages_to_plot))
         line_styles = ['-', '--', ':', '-.', '-']  # Different line styles
         
+        # Get all y-values for selected percentages (needed for legend positioning and y-axis scaling)
+        all_y_values = []
+        for percent in percentages_to_plot:
+            arb_column = f'Arb {percent}%'
+            if arb_column in filtered_df.columns:
+                y_data = filtered_df[arb_column].dropna()
+                if not y_data.empty:
+                    all_y_values.extend(y_data.tolist())
+        
         # Plot each percentage
         for i, percent in enumerate(percentages_to_plot):
             arb_column = f'Arb {percent}%'
@@ -399,7 +408,6 @@ if 'netbacks_df' in st.session_state:
         ax.set_ylabel('$/MMBtu', fontsize=12)
         
         # Position legend inside the chart in the best location
-        # Check if there's space in the upper right corner
         if all_y_values:
             # Get the data range to determine best legend position
             y_min_data = min(all_y_values)
@@ -420,14 +428,6 @@ if 'netbacks_df' in st.session_state:
         
         # Y-axis scaling
         if auto_scale_y:
-            # Get all y-values for selected percentages
-            all_y_values = []
-            for percent in percentages_to_plot:
-                arb_column = f'Arb {percent}%'
-                if arb_column in filtered_df.columns:
-                    y_data = filtered_df[arb_column].dropna()
-                    if not y_data.empty:
-                        all_y_values.extend(y_data.tolist())
             
             if all_y_values:
                 y_min = min(all_y_values)
