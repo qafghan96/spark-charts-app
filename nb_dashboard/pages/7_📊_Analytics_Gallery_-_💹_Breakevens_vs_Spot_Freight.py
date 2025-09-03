@@ -250,8 +250,30 @@ if st.button("Generate Chart", type="primary"):
     start_datetime = datetime.datetime.combine(start_date, datetime.time.min)
     end_datetime = datetime.datetime.combine(end_date, datetime.time.max)
     
+    # Filter data to the selected date range for y-axis scaling
+    date_filtered_df = merge_df[
+        (merge_df['Release Date'] >= start_datetime) & 
+        (merge_df['Release Date'] <= end_datetime)
+    ]
+    
+    # Auto-adjust y-axis based on filtered data
+    if not date_filtered_df.empty:
+        y_values = pd.concat([date_filtered_df['USDperday'], date_filtered_df['FreightBreakeven']])
+        y_min = y_values.min()
+        y_max = y_values.max()
+        
+        # Add some padding (10% of the range)
+        y_range = y_max - y_min
+        padding = y_range * 0.1
+        y_min_padded = y_min - padding
+        y_max_padded = y_max + padding
+        
+        ax2.set_ylim(y_min_padded, y_max_padded)
+    else:
+        # Fallback to default if no data in range
+        ax2.set_ylim(-100000, 120000)
+    
     ax2.set_xlim(start_datetime, end_datetime)
-    ax2.set_ylim(-100000, 120000)
 
     plt.title(f'{freight_ticker.upper()} (Atlantic) vs. US Arb [M+1] Freight Breakeven Level')
     sns.despine(left=True, bottom=True)
