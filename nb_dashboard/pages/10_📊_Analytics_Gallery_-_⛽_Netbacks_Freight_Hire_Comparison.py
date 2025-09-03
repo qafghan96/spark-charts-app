@@ -397,7 +397,26 @@ if 'netbacks_df' in st.session_state:
         ax.set_title(chart_title, fontsize=14, fontweight='bold')
         ax.set_xlabel('Release Date', fontsize=12)
         ax.set_ylabel('$/MMBtu', fontsize=12)
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        # Position legend inside the chart in the best location
+        # Check if there's space in the upper right corner
+        if all_y_values:
+            # Get the data range to determine best legend position
+            y_min_data = min(all_y_values)
+            y_max_data = max(all_y_values)
+            
+            # If most data is negative, place legend at top
+            if y_max_data < 0:
+                ax.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, framealpha=0.9)
+            # If most data is positive, place legend at bottom right
+            elif y_min_data > 0:
+                ax.legend(loc='lower right', frameon=True, fancybox=True, shadow=True, framealpha=0.9)
+            # If data spans both positive and negative, use upper left
+            else:
+                ax.legend(loc='upper left', frameon=True, fancybox=True, shadow=True, framealpha=0.9)
+        else:
+            # Default position if no data
+            ax.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, framealpha=0.9)
         
         # Y-axis scaling
         if auto_scale_y:
