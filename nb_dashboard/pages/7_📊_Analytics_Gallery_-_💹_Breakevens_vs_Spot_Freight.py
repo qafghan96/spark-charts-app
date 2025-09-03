@@ -70,7 +70,7 @@ def format_store(available_via, fob_names, tickrs):
     dict_df = pd.DataFrame(dict_store)
     return dict_df
 
-def fetch_breakevens(access_token, ticker, via=None, breakeven='freight', start=None, end=None, format='json'):
+def fetch_breakevens(access_token, ticker, via=None, breakeven='freight', start=None, end=None, format='csv'):
     query_params = breakeven + '/' + "?fob-port={}".format(ticker)
 
     if via is not None:
