@@ -171,6 +171,24 @@ with col3:
     # Freight ticker selection
     freight_ticker = st.selectbox("Freight Ticker", options=['spark30s', 'spark25s'], index=0)
 
+# Date range controls
+st.subheader("Date Range")
+col1, col2 = st.columns(2)
+
+with col1:
+    start_date = st.date_input(
+        "Start Date", 
+        value=datetime.datetime.today() - datetime.timedelta(days=380),
+        help="Start date for the chart display range"
+    )
+
+with col2:
+    end_date = st.date_input(
+        "End Date", 
+        value=datetime.datetime.today(),
+        help="End date for the chart display range"
+    )
+
 if st.button("Generate Chart", type="primary"):
     with st.spinner("Fetching data..."):
         try:
@@ -181,11 +199,6 @@ if st.button("Generate Chart", type="primary"):
             # Fetch breakevens data
             break_df = fetch_breakevens(token, my_ticker, via=my_via, breakeven='freight', format='csv')
             
-            # Debug: show actual columns and data
-            st.write("break_df columns:", break_df.columns.tolist())
-            st.write("break_df sample:")
-            st.dataframe(break_df.head())
-            
             # Find the correct date column name
             date_column = None
             for col in break_df.columns:
@@ -195,7 +208,6 @@ if st.button("Generate Chart", type="primary"):
             
             if date_column:
                 break_df['ReleaseDate'] = pd.to_datetime(break_df[date_column])
-                st.write(f"Using '{date_column}' as the date column")
             else:
                 st.error("No date column found in breakevens data")
                 st.stop()
@@ -234,7 +246,11 @@ if st.button("Generate Chart", type="primary"):
                      where=merge_df['USDperday'] < merge_df['FreightBreakeven'], 
                      facecolor='green', interpolate=True, alpha=0.05)
 
-    ax2.set_xlim(datetime.datetime.today() - datetime.timedelta(days=380), datetime.datetime.today())
+    # Convert date inputs to datetime for matplotlib
+    start_datetime = datetime.datetime.combine(start_date, datetime.time.min)
+    end_datetime = datetime.datetime.combine(end_date, datetime.time.max)
+    
+    ax2.set_xlim(start_datetime, end_datetime)
     ax2.set_ylim(-100000, 120000)
 
     plt.title(f'{freight_ticker.upper()} (Atlantic) vs. US Arb [M+1] Freight Breakeven Level')
