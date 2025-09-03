@@ -353,10 +353,6 @@ if 'price_df' in st.session_state:
         # Set x-axis limits
         ax.set_xlim(x_min, x_max)
         
-        # Format y-axis with currency
-        current_values = plt.gca().get_yticks()
-        plt.gca().set_yticklabels(['$ {:,.0f}'.format(x) for x in current_values])
-        
         # Y-axis scaling
         if auto_scale_y:
             y_values = month_filtered_df['USDperday'].dropna()
@@ -383,6 +379,10 @@ if 'price_df' in st.session_state:
         else:
             # Manual Y-axis scaling
             plt.ylim(y_min_manual, y_max_manual)
+        
+        # Format y-axis with currency AFTER setting the limits
+        current_values = plt.gca().get_yticks()
+        plt.gca().set_yticklabels(['$ {:,.0f}'.format(x) for x in current_values])
         
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
