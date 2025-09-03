@@ -442,7 +442,3 @@ if 'netbacks_df' in st.session_state:
 
 st.markdown("---")
 st.caption("This analysis compares arbitrage opportunities at different freight hire inclusion levels, helping identify optimal freight cost allocation strategies.")
-
-<function_calls>
-<invoke name="TodoWrite">
-<parameter name="todos">[{"content": "Create Netbacks Freight Hire Comparison dashboard page", "status": "completed", "id": "1"}]
