@@ -180,10 +180,9 @@ if st.button("Generate Chart", type="primary"):
             # Fetch breakevens data
             break_df = fetch_breakevens(token, my_ticker, via=my_via, breakeven='freight', format='csv')
             break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
-            break_df = break_df.rename(columns={'ReleaseDate': 'Release Date'})
             
             # Get length for freight data
-            length = len(break_df['Release Date'].unique())
+            length = len(break_df['ReleaseDate'].unique())
             
             # Fetch freight prices
             freight_df = fetch_freight_prices(token, freight_ticker, length, my_vessel='174-2stroke')
@@ -193,7 +192,7 @@ if st.button("Generate Chart", type="primary"):
             
             # Merge data
             freight_df['Release Date'] = pd.to_datetime(freight_df['Release Date'])
-            merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='Release Date', how='inner')
+            merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='ReleaseDate', how='inner')
             
         except Exception as e:
             st.error(f"Error: {str(e)}")
