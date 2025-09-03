@@ -32,7 +32,7 @@ if not client_id or not client_secret:
 scopes = "read:netbacks,read:access,read:prices,read:routes"
 token = get_access_token(client_id, client_secret, scopes=scopes)
 
-# Functions from the original script
+# Functions from the updated script
 def list_netbacks(access_token):
     content = api_get("/v1.0/netbacks/reference-data/", access_token)
     
@@ -70,24 +70,28 @@ def format_store(available_via, fob_names, tickrs):
     dict_df = pd.DataFrame(dict_store)
     return dict_df
 
-def fetch_breakevens(access_token, ticker, nea_via=None, nwe_via=None, format='csv'):
-    query_params = "?fob-port={}".format(ticker)
-    if nea_via is not None:
-        query_params += "&nea-via-point={}".format(nea_via)
-    if nwe_via is not None:
-        query_params += "&nwe-via-point={}".format(nwe_via)
-    
-    content = api_get("/beta/netbacks/arb-breakevens/{}".format(query_params), access_token)
+def fetch_breakevens(access_token, ticker, via=None, breakeven='freight', start=None, end=None, format='json'):
+    query_params = breakeven + '/' + "?fob-port={}".format(ticker)
+
+    if via is not None:
+        query_params += "&via-point={}".format(via)
+    if start is not None:
+        query_params += "&start={}".format(start)
+    if end is not None:
+        query_params += "&end={}".format(end)
+
+    uri = "/v1.0/netbacks/arb-breakevens/{}".format(query_params)
+    content = api_get(uri, access_token)
     
     if format == 'json':
         my_dict = content['data']
     else:
-        # Convert JSON data to DataFrame directly
+        # For CSV format, convert the data to DataFrame
         my_dict = pd.DataFrame(content['data'])
-    
+
     return my_dict
 
-def fetch_historical_price_releases(access_token, ticker, limit=4, offset=None, vessel=None):
+def fetch_historical_freight_releases(access_token, ticker, limit=4, offset=None, vessel=None):
     query_params = "?limit={}".format(limit)
     if offset is not None:
         query_params += "&offset={}".format(offset)
@@ -100,17 +104,15 @@ def fetch_historical_price_releases(access_token, ticker, limit=4, offset=None, 
     
     return my_dict
 
-def fetch_prices(access_token, ticker, my_lim, my_vessel=None):
-    my_dict_hist = fetch_historical_price_releases(access_token, ticker, limit=my_lim, vessel=my_vessel)
+def fetch_freight_prices(access_token, ticker, my_lim, my_vessel=None):
+    my_dict_hist = fetch_historical_freight_releases(access_token, ticker, limit=my_lim, vessel=my_vessel)
     
     release_dates = []
     period_start = []
     ticker_list = []
     usd_day = []
-    usd_mmbtu = []
     day_min = []
     day_max = []
-    cal_month = []
 
     for release in my_dict_hist:
         release_date = release["releaseDate"]
@@ -126,24 +128,20 @@ def fetch_prices(access_token, ticker, my_lim, my_vessel=None):
             usd_day.append(data_point['derivedPrices']['usdPerDay']['spark'])
             day_min.append(data_point['derivedPrices']['usdPerDay']['sparkMin'])
             day_max.append(data_point['derivedPrices']['usdPerDay']['sparkMax'])
-            usd_mmbtu.append(data_point['derivedPrices']['usdPerMMBtu']['spark'])
-            cal_month.append(datetime.datetime.strptime(period_start_at, '%Y-%m-%d').strftime('%b-%Y'))
 
     historical_df = pd.DataFrame({
+        'Release Date': release_dates,
         'ticker': ticker_list,
         'Period Start': period_start,
         'USDperday': usd_day,
         'USDperdayMax': day_max,
-        'USDperdayMin': day_min,
-        'USDperMMBtu': usd_mmbtu,
-        'Release Date': release_dates
+        'USDperdayMin': day_min
     })
 
     historical_df['USDperday'] = pd.to_numeric(historical_df['USDperday'])
     historical_df['USDperdayMax'] = pd.to_numeric(historical_df['USDperdayMax'])
     historical_df['USDperdayMin'] = pd.to_numeric(historical_df['USDperdayMin'])
-    historical_df['USDperMMBtu'] = pd.to_numeric(historical_df['USDperMMBtu'])
-    historical_df['Release Datetime'] = pd.to_datetime(historical_df['Release Date'])
+    historical_df['Release Date'] = pd.to_datetime(historical_df['Release Date'])
     
     return historical_df
 
@@ -180,35 +178,22 @@ if st.button("Generate Chart", type="primary"):
             my_ticker = tickers[ti]
             
             # Fetch breakevens data
-            break_df = fetch_breakevens(token, my_ticker, nea_via=my_via, format='csv')
-            st.write("Original break_df columns:", break_df.columns.tolist())
-            
-            # Check what the actual column name is and rename accordingly
-            if 'ReleaseDate' in break_df.columns:
-                break_df = break_df.rename(columns={'ReleaseDate': 'Release Date'})
-            elif 'releaseDate' in break_df.columns:
-                break_df = break_df.rename(columns={'releaseDate': 'Release Date'})
-            elif 'release_date' in break_df.columns:
-                break_df = break_df.rename(columns={'release_date': 'Release Date'})
-            
-            st.write("After rename break_df columns:", break_df.columns.tolist())
-            break_df['Release Date'] = pd.to_datetime(break_df['Release Date'])
+            break_df = fetch_breakevens(token, my_ticker, via=my_via, breakeven='freight', format='csv')
+            break_df['ReleaseDate'] = pd.to_datetime(break_df['ReleaseDate'])
+            break_df = break_df.rename(columns={'ReleaseDate': 'Release Date'})
             
             # Get length for freight data
             length = len(break_df['Release Date'].unique())
             
             # Fetch freight prices
-            freight_df = fetch_prices(token, freight_ticker, length, my_vessel='174-2stroke')
+            freight_df = fetch_freight_prices(token, freight_ticker, length, my_vessel='174-2stroke')
             
             # Filter front month breakevens
             front_df = break_df[break_df['LoadMonthIndex'] == "M+1"]
             
-            # Merge data - simplified to match template
+            # Merge data
             freight_df['Release Date'] = pd.to_datetime(freight_df['Release Date'])
             merge_df = pd.merge(freight_df, front_df, left_on='Release Date', right_on='Release Date', how='inner')
-            
-            # Simplify merge_df to match template structure
-            merge_df = merge_df[['Release Date', 'USDperday', 'FreightBreakevenUSDPerDay']].copy()
             
         except Exception as e:
             st.error(f"Error: {str(e)}")
@@ -220,21 +205,21 @@ if st.button("Generate Chart", type="primary"):
 
     ax2.plot(merge_df['Release Date'], merge_df['USDperday'], 
              color='#48C38D', linewidth=2.5, label=f'{freight_ticker.upper()} (Atlantic)')
-    ax2.plot(merge_df['Release Date'], merge_df['FreightBreakevenUSDPerDay'], 
+    ax2.plot(merge_df['Release Date'], merge_df['FreightBreakeven'], 
              color='#4F41F4', linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
 
-    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakevenUSDPerDay'],
-                     where=merge_df['USDperday'] > merge_df['FreightBreakevenUSDPerDay'], 
+    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakeven'],
+                     where=merge_df['USDperday'] > merge_df['FreightBreakeven'], 
                      facecolor='red', interpolate=True, alpha=0.05)
 
-    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakevenUSDPerDay'],
-                     where=merge_df['USDperday'] < merge_df['FreightBreakevenUSDPerDay'], 
+    ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakeven'],
+                     where=merge_df['USDperday'] < merge_df['FreightBreakeven'], 
                      facecolor='green', interpolate=True, alpha=0.05)
 
     ax2.set_xlim(datetime.datetime.today() - datetime.timedelta(days=380), datetime.datetime.today())
     ax2.set_ylim(-100000, 120000)
 
-    plt.title(f'{freight_ticker.upper()} vs. US Arb [M+1] Freight Breakeven Level')
+    plt.title(f'{freight_ticker.upper()} (Atlantic) vs. US Arb [M+1] Freight Breakeven Level')
     sns.despine(left=True, bottom=True)
     plt.grid(True)
     plt.legend()
