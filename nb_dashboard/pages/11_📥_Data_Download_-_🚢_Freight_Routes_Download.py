@@ -158,7 +158,7 @@ def historical_routes(tick, unit, my_release, access_token):
                     my_route['Carbon Cost'].append(0)
         
         progress_bar.progress((i + 1) / len(my_release))
-        time.sleep(0.3)
+        time.sleep(0.2)
     
     status_text.text('Processing data...')
     
