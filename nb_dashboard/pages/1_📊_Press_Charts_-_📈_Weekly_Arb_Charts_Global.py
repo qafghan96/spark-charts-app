@@ -34,10 +34,10 @@ port_options = {name: (uuid, vias) for uuid, name, vias in zip(tickers, names, a
 
 left, right = st.columns(2)
 with left:
-    port_a = st.selectbox("Port A", options=list(port_options.keys()), index=names.index("Bonny LNG") if "Bonny LNG" in names else 0)
+    port_a = st.selectbox("Port A 🟡", options=list(port_options.keys()), index=names.index("Bonny LNG") if "Bonny LNG" in names else 0)
     via_a = st.selectbox("Port A via-point", options=port_options[port_a][1] or ["cogh"], index=0)
 with right:
-    port_b = st.selectbox("Port B", options=list(port_options.keys()), index=names.index("Sabine Pass") if "Sabine Pass" in names else 0)
+    port_b = st.selectbox("Port B 🟣", options=list(port_options.keys()), index=names.index("Sabine Pass") if "Sabine Pass" in names else 0)
     via_b = st.selectbox("Port B via-point", options=port_options[port_b][1] or ["cogh", "panama"], index=0)
 
 include_c = st.checkbox("Include Port C", value=True)
@@ -45,7 +45,7 @@ if include_c:
     c1, c2 = st.columns(2)
     with c1:
         default_c_idx = names.index("Sabine Pass") if "Sabine Pass" in names else 0
-        port_c = st.selectbox("Port C", options=list(port_options.keys()), index=default_c_idx, key="port_c")
+        port_c = st.selectbox("Port C 🟢", options=list(port_options.keys()), index=default_c_idx, key="port_c")
     with c2:
         via_c = st.selectbox(
             "Port C via-point",
