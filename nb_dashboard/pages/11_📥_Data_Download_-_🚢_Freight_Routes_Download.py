@@ -205,14 +205,8 @@ with col2:
                            index=discharge_locations.index("Futtsu") if "Futtsu" in discharge_locations else 0)
 
 with col3:
-    # Filter via options based on selected load and discharge
-    filtered_routes = route_df[(route_df["Load Location"] == load) & 
-                              (route_df["Discharge Location"] == discharge)]
-    via_options = sorted([via for via in filtered_routes["Via"].unique() if via is not None])
-    if not via_options:
-        via_options = ["cogh"]
-    via = st.selectbox("Via", options=via_options, 
-                      index=via_options.index("cogh") if "cogh" in via_options else 0)
+    via_options = ["cogh", "panama", "suez", None]
+    via = st.selectbox("Via", options=via_options, index=0)
 
 # Number of releases
 num_releases = st.slider("Number of releases", min_value=5, max_value=50, value=10, step=5)
