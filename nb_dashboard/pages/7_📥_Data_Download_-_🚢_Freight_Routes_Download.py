@@ -209,7 +209,7 @@ with col3:
     via = st.selectbox("Via", options=via_options, index=0)
 
 # Number of releases
-num_releases = st.slider("Number of releases", min_value=5, max_value=50, value=10, step=5)
+num_releases = st.slider("Number of releases", min_value=5, max_value=1000, value=10, step=5)
 my_releases = reldates[:num_releases]
 
 # Find the route UUID - handle None value properly
