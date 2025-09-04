@@ -205,17 +205,22 @@ with col2:
                            index=discharge_locations.index("Futtsu") if "Futtsu" in discharge_locations else 0)
 
 with col3:
-    via_options = ["cogh", "panama", "suez", None]
+    via_options = ["cogh", "panama", "suez", "None"]
     via = st.selectbox("Via", options=via_options, index=0)
 
 # Number of releases
 num_releases = st.slider("Number of releases", min_value=5, max_value=50, value=10, step=5)
 my_releases = reldates[:num_releases]
 
-# Find the route UUID
-matching_routes = route_df[(route_df["Load Location"] == load) & 
-                          (route_df["Discharge Location"] == discharge) & 
-                          (route_df['Via'] == via)]
+# Find the route UUID - handle None value properly
+if via == "None":
+    matching_routes = route_df[(route_df["Load Location"] == load) & 
+                              (route_df["Discharge Location"] == discharge) & 
+                              (route_df['Via'].isnull())]
+else:
+    matching_routes = route_df[(route_df["Load Location"] == load) & 
+                              (route_df["Discharge Location"] == discharge) & 
+                              (route_df['Via'] == via)]
 
 if matching_routes.empty:
     st.error(f"No route found for {load} -> {discharge} via {via}")
