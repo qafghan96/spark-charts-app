@@ -122,6 +122,7 @@ def fetch_route_data(access_token, ticker, release, congestion_laden=None, conge
 def historical_routes(tick, unit, my_release, access_token):
     """Fetch historical route data and return as DataFrame."""
     my_route = {
+        "Release Date": [],
         "Period": [],
         "Start Date": [],
         "End Date": [],
@@ -142,6 +143,7 @@ def historical_routes(tick, unit, my_release, access_token):
         
         if my_dict and "dataPoints" in my_dict:
             for data in my_dict["dataPoints"]:
+                my_route['Release Date'].append(r)
                 my_route['Start Date'].append(data["deliveryPeriod"]["startAt"])
                 my_route['End Date'].append(data["deliveryPeriod"]["endAt"])
                 my_route['Period'].append(data["deliveryPeriod"]["name"])
