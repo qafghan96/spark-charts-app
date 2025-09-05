@@ -45,17 +45,50 @@ colors = {
     "Spark30S Atlantic": "#48C38D",
 }
 
+# Store dataframes and latest prices
+price_data = {}
+
 for name, ticker in contracts.items():
     df = build_price_df(token, ticker, limit=limit)
     if df.empty:
         continue
     ax.plot(df["Release Date"], df["Spark"], color=colors.get(name, "#333"), linewidth=3.0, label=name)
     ax.scatter(df["Release Date"].iloc[0], df["Spark"].iloc[0], color=colors.get(name, "#333"), s=120)
+    
+    # Store latest price data
+    price_data[name] = {
+        "latest_price": df["Spark"].iloc[0],
+        "latest_date": df["Release Date"].iloc[0]
+    }
 
 ax.set_ylim(10000, 60000)
 sns.despine(left=True, bottom=True)
 ax.legend()
 st.pyplot(fig)
+
+# Display latest prices
+st.subheader("Latest Release Date Prices")
+col1, col2 = st.columns(2)
+
+if "Spark25S Pacific" in price_data:
+    with col1:
+        latest_price = price_data["Spark25S Pacific"]["latest_price"]
+        latest_date = price_data["Spark25S Pacific"]["latest_date"]
+        st.metric(
+            label="Spark25S Pacific",
+            value=f"${latest_price:,.0f}",
+            help=f"Latest price as of {latest_date.strftime('%Y-%m-%d')}"
+        )
+
+if "Spark30S Atlantic" in price_data:
+    with col2:
+        latest_price = price_data["Spark30S Atlantic"]["latest_price"]
+        latest_date = price_data["Spark30S Atlantic"]["latest_date"]
+        st.metric(
+            label="Spark30S Atlantic", 
+            value=f"${latest_price:,.0f}",
+            help=f"Latest price as of {latest_date.strftime('%Y-%m-%d')}"
+        )
 
 
 

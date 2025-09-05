@@ -78,15 +78,38 @@ if include_c:
 if df_a.empty and df_b.empty and (df_c is None or df_c.empty):
     st.warning("No data returned for the selected ports.")
 else:
+    # Store price data for display
+    port_prices = []
+    
     if not df_a.empty:
         ax.plot(df_a['Release Date'], df_a['Delta Outrights'], color='#FFC217', label=f"{port_a} ({via_a})", linewidth=3.0)
         ax.scatter(df_a['Release Date'].iloc[0], df_a['Delta Outrights'].iloc[0], color='#FFC217', s=120)
+        port_prices.append({
+            "port": f"{port_a} ({via_a})",
+            "price": df_a['Delta Outrights'].iloc[0],
+            "date": df_a['Release Date'].iloc[0],
+            "color": "🟡"
+        })
+    
     if not df_b.empty:
         ax.plot(df_b['Release Date'], df_b['Delta Outrights'], color='#4F41F4', label=f"{port_b} ({via_b})", linewidth=3.0)
         ax.scatter(df_b['Release Date'].iloc[0], df_b['Delta Outrights'].iloc[0], color='#4F41F4', s=120)
+        port_prices.append({
+            "port": f"{port_b} ({via_b})",
+            "price": df_b['Delta Outrights'].iloc[0],
+            "date": df_b['Release Date'].iloc[0],
+            "color": "🟣"
+        })
+    
     if include_c and df_c is not None and not df_c.empty:
         ax.plot(df_c['Release Date'], df_c['Delta Outrights'], color='#48C38D', label=f"{port_c} ({via_c})", linewidth=3.0)
         ax.scatter(df_c['Release Date'].iloc[0], df_c['Delta Outrights'].iloc[0], color='#48C38D', s=120)
+        port_prices.append({
+            "port": f"{port_c} ({via_c})",
+            "price": df_c['Delta Outrights'].iloc[0],
+            "date": df_c['Release Date'].iloc[0],
+            "color": "🟢"
+        })
 
     # Shaded band similar to notebook
     # Choose reference df for band/x-limits: prefer B, then A, then C
@@ -110,5 +133,35 @@ else:
     plt.ylim(-0.5, 0.5)
     plt.tight_layout()
     st.pyplot(fig)
+    
+    # Display latest prices
+    st.subheader("Latest Release Date Prices")
+    if len(port_prices) == 1:
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            price_data = port_prices[0]
+            st.metric(
+                label=f"{price_data['color']} {price_data['port']}",
+                value=f"${price_data['price']:.3f}/MMBtu",
+                help=f"Latest price as of {price_data['date'].strftime('%Y-%m-%d')}"
+            )
+    elif len(port_prices) == 2:
+        col1, col2 = st.columns(2)
+        for i, price_data in enumerate(port_prices):
+            with [col1, col2][i]:
+                st.metric(
+                    label=f"{price_data['color']} {price_data['port']}",
+                    value=f"${price_data['price']:.3f}/MMBtu",
+                    help=f"Latest price as of {price_data['date'].strftime('%Y-%m-%d')}"
+                )
+    elif len(port_prices) == 3:
+        col1, col2, col3 = st.columns(3)
+        for i, price_data in enumerate(port_prices):
+            with [col1, col2, col3][i]:
+                st.metric(
+                    label=f"{price_data['color']} {price_data['port']}",
+                    value=f"${price_data['price']:.3f}/MMBtu",
+                    help=f"Latest price as of {price_data['date'].strftime('%Y-%m-%d')}"
+                )
 
 
