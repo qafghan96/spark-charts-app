@@ -226,7 +226,7 @@ with col3:
                                  index=month_options.index(default_month) if default_month in month_options else 0)
 
 # Number of releases
-num_releases = st.slider("Number of releases", min_value=50, max_value=500, value=200, step=50)
+num_releases = st.slider("Number of releases", min_value=50, max_value=2000, value=200, step=50)
 my_releases = reldates[:num_releases]
 
 # Get port ticker
