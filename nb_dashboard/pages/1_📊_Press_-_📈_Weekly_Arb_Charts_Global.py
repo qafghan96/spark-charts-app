@@ -38,7 +38,9 @@ with left:
     via_a = st.selectbox("Port A via-point", options=port_options[port_a][1] or ["cogh"], index=0)
 with right:
     port_b = st.selectbox("Port B 🟣", options=list(port_options.keys()), index=names.index("Sabine Pass") if "Sabine Pass" in names else 0)
-    via_b = st.selectbox("Port B via-point", options=port_options[port_b][1] or ["cogh", "panama"], index=0)
+    via_b_options = port_options[port_b][1] or ["cogh", "panama"]
+    panama_index = via_b_options.index("panama") if "panama" in via_b_options else 0
+    via_b = st.selectbox("Port B via-point", options=via_b_options, index=panama_index)
 
 include_c = st.checkbox("Include Port C", value=True)
 if include_c:
