@@ -365,8 +365,9 @@ if st.button("Generate Marginal Terminal Analysis", type="primary"):
     # Plot marginal terminals
     colors = plt.cm.Set3(np.linspace(0, 1, len(marg_list)))
     for i, m in enumerate(marg_list):
-        tdf = wtp_df[wtp_df['Marginal Terminal'] == m][['Release Date', m]]
-        ax.scatter(tdf['Release Date'], tdf[m], label=m, color=colors[i], alpha=0.7)
+        if m in wtp_df.columns:  # Only plot if terminal column exists
+            tdf = wtp_df[wtp_df['Marginal Terminal'] == m][['Release Date', m]]
+            ax.scatter(tdf['Release Date'], tdf[m], label=m, color=colors[i], alpha=0.7)
     
     # Shade negative area
     negrange = [wtp_df['Release Date'].iloc[-1] - pd.Timedelta(20, unit='day'), 
@@ -402,6 +403,8 @@ if st.button("Generate Marginal Terminal Analysis", type="primary"):
         if len(wtp_df) > 0 and current_marginal in wtp_df.columns:
             current_marginal_wtp = wtp_df[current_marginal].iloc[0]
             st.metric("Marginal Terminal WTP", f"${current_marginal_wtp:.3f}/MMBtu")
+        else:
+            st.metric("Marginal Terminal WTP", "N/A")
     
     # Marginal terminal frequency
     st.subheader("Marginal Terminal Frequency")
