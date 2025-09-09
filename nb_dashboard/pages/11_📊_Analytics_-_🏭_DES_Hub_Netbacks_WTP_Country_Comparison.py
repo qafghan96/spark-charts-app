@@ -89,7 +89,8 @@ def deshub_organise_dataframe(data):
     df['DES Hub Netback - TTF Basis - Var Regas Costs Only'] = df['DES Hub Netback - TTF Basis'] \
                                                                 + df['Basic Slot (Unload/Stor/Regas)'] \
                                                                 + df['Basic Slot (Berth)'] \
-                                                                + df['Basic Slot (B/U/S/R)']
+                                                                + df['Basic Slot (B/U/S/R)'] \
+                                                                + df['Entry Capacity']
     return df
 
 def loop_historical_data(token, n_offset):
