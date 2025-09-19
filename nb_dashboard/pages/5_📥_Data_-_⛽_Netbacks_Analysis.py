@@ -169,10 +169,10 @@ def netbacks(access_token, tickers, fobPort_names, tick, my_releases, my_via=Non
         'Release Date': release_date,
         'FoB Port': port,
         'Month': months,
-        'NEA Outrights': nea_outrights,
-        'NEA TTF Basis': nea_ttfbasis,
-        'NWE Outrights': nwe_outrights,
-        'NWE TTF Basis': nwe_ttfbasis,
+        'NEA Netback (Outright)': nea_outrights,
+        'NEA Netback (TTF Basis)': nea_ttfbasis,
+        'NWE Netback (Outright)': nwe_outrights,
+        'NWE Netback (TTF Basis)': nwe_ttfbasis,
         'NEA-NWE Arb': delta_outrights,
         'Max Outrights': max_outrights,
         'Max TTF Basis': max_ttfbasis,
@@ -295,7 +295,7 @@ if st.button("Fetch Netbacks Data", type="primary"):
                         st.write("**NEA Components**")
                         nea_meta_stats = df[[
                             'NEA TTF Price', 'NEA TTF Basis Meta', 'NEA DES LNG Price', 
-                            'NEA Route Cost', 'NEA Volume Adjustment', 'NEA Outrights'
+                            'NEA Route Cost', 'NEA Volume Adjustment', 'NEA Netback (Outright)'
                         ]].describe()
                         st.dataframe(nea_meta_stats, use_container_width=True)
                     
@@ -303,7 +303,7 @@ if st.button("Fetch Netbacks Data", type="primary"):
                         st.write("**NWE Components**")
                         nwe_meta_stats = df[[
                             'NWE TTF Price', 'NWE TTF Basis Meta', 'NWE DES LNG Price', 
-                            'NWE Route Cost', 'NWE Volume Adjustment', 'NWE Outrights'
+                            'NWE Route Cost', 'NWE Volume Adjustment', 'NWE Netback (Outright)'
                         ]].describe()
                         st.dataframe(nwe_meta_stats, use_container_width=True)
                     
@@ -319,7 +319,7 @@ if st.button("Fetch Netbacks Data", type="primary"):
                 
                 else:
                     # Standard view
-                    summary_stats = df[['NEA Outrights', 'NWE Outrights', 'NEA-NWE Arb', 'Max Outrights']].describe()
+                    summary_stats = df[['NEA Netback (Outright)', 'NWE Netback (Outright)', 'NEA-NWE Arb', 'Max Outrights']].describe()
                     st.dataframe(summary_stats, use_container_width=True)
                 
             else:
@@ -342,8 +342,8 @@ if 'netbacks_df' in st.session_state and not st.session_state.netbacks_df.empty:
     
     if view_option == "Summary View":
         # Standard columns only
-        summary_cols = ['Release Date', 'FoB Port', 'Month', 'NEA Outrights', 'NEA TTF Basis', 
-                       'NWE Outrights', 'NWE TTF Basis', 'NEA-NWE Arb', 'Max Outrights', 'Max TTF Basis']
+        summary_cols = ['Release Date', 'FoB Port', 'Month', 'NEA Netback (Outright)', 'NEA Netback (TTF Basis)', 
+                       'NWE Netback (Outright)', 'NWE Netback (TTF Basis)', 'NEA-NWE Arb', 'Max Outrights', 'Max TTF Basis']
         st.dataframe(st.session_state.netbacks_df[summary_cols], use_container_width=True)
         
     elif view_option == "Full Data with Meta":
