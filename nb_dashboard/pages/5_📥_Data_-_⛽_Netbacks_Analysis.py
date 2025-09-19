@@ -103,6 +103,20 @@ def netbacks(access_token, tickers, fobPort_names, tick, my_releases, my_via=Non
     max_ttfbasis = []
     port = []
     
+    # NEA Meta fields
+    nea_ttf_price = []
+    nea_ttf_basis_meta = []
+    nea_des_lng_price = []
+    nea_route_cost = []
+    nea_volume_adjustment = []
+    
+    # NWE Meta fields
+    nwe_ttf_price = []
+    nwe_ttf_basis_meta = []
+    nwe_des_lng_price = []
+    nwe_route_cost = []
+    nwe_volume_adjustment = []
+    
     progress_bar = st.progress(0)
     status_text = st.empty()
     
@@ -125,6 +139,22 @@ def netbacks(access_token, tickers, fobPort_names, tick, my_releases, my_via=Non
                 max_ttfbasis.append(float(m['max']['ttfBasis']['usdPerMMBtu']))
                 release_date.append(r)
                 port.append(fobPort_names[tick])
+                
+                # Extract NEA Meta data
+                nea_meta = m.get('neaMeta', {})
+                nea_ttf_price.append(float(nea_meta.get('ttfPrice', {}).get('usdPerMMBtu', 0)))
+                nea_ttf_basis_meta.append(float(nea_meta.get('ttfBasis', {}).get('usdPerMMBtu', 0)))
+                nea_des_lng_price.append(float(nea_meta.get('desLngPrice', {}).get('usdPerMMBtu', 0)))
+                nea_route_cost.append(float(nea_meta.get('routeCost', {}).get('usdPerMMBtu', 0)))
+                nea_volume_adjustment.append(float(nea_meta.get('volumeAdjustment', {}).get('usdPerMMBtu', 0)))
+                
+                # Extract NWE Meta data
+                nwe_meta = m.get('nweMeta', {})
+                nwe_ttf_price.append(float(nwe_meta.get('ttfPrice', {}).get('usdPerMMBtu', 0)))
+                nwe_ttf_basis_meta.append(float(nwe_meta.get('ttfBasis', {}).get('usdPerMMBtu', 0)))
+                nwe_des_lng_price.append(float(nwe_meta.get('desLngPrice', {}).get('usdPerMMBtu', 0)))
+                nwe_route_cost.append(float(nwe_meta.get('routeCost', {}).get('usdPerMMBtu', 0)))
+                nwe_volume_adjustment.append(float(nwe_meta.get('volumeAdjustment', {}).get('usdPerMMBtu', 0)))
             
             time.sleep(0.5)  # Rate limiting
                 
@@ -146,6 +176,18 @@ def netbacks(access_token, tickers, fobPort_names, tick, my_releases, my_via=Non
         'NEA-NWE Arb': delta_outrights,
         'Max Outrights': max_outrights,
         'Max TTF Basis': max_ttfbasis,
+        # NEA Meta fields
+        'NEA TTF Price': nea_ttf_price,
+        'NEA TTF Basis Meta': nea_ttf_basis_meta,
+        'NEA DES LNG Price': nea_des_lng_price,
+        'NEA Route Cost': nea_route_cost,
+        'NEA Volume Adjustment': nea_volume_adjustment,
+        # NWE Meta fields
+        'NWE TTF Price': nwe_ttf_price,
+        'NWE TTF Basis Meta': nwe_ttf_basis_meta,
+        'NWE DES LNG Price': nwe_des_lng_price,
+        'NWE Route Cost': nwe_route_cost,
+        'NWE Volume Adjustment': nwe_volume_adjustment,
     })
     
     # Convert date columns
@@ -239,8 +281,46 @@ if st.button("Fetch Netbacks Data", type="primary"):
                 
                 # Summary statistics
                 st.subheader("Price Statistics ($/MMBtu)")
-                summary_stats = df[['NEA Outrights', 'NWE Outrights', 'NEA-NWE Arb', 'Max Outrights']].describe()
-                st.dataframe(summary_stats, use_container_width=True)
+                
+                # Display options
+                show_meta = st.checkbox("Show detailed breakdown (Meta fields)", value=False)
+                
+                if show_meta:
+                    # Detailed view with meta fields
+                    st.subheader("Netback Components Analysis")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**NEA Components**")
+                        nea_meta_stats = df[[
+                            'NEA TTF Price', 'NEA TTF Basis Meta', 'NEA DES LNG Price', 
+                            'NEA Route Cost', 'NEA Volume Adjustment', 'NEA Outrights'
+                        ]].describe()
+                        st.dataframe(nea_meta_stats, use_container_width=True)
+                    
+                    with col2:
+                        st.write("**NWE Components**")
+                        nwe_meta_stats = df[[
+                            'NWE TTF Price', 'NWE TTF Basis Meta', 'NWE DES LNG Price', 
+                            'NWE Route Cost', 'NWE Volume Adjustment', 'NWE Outrights'
+                        ]].describe()
+                        st.dataframe(nwe_meta_stats, use_container_width=True)
+                    
+                    # Component comparison
+                    st.subheader("Route Cost & Volume Adjustment Comparison")
+                    comp_df = pd.DataFrame({
+                        'NEA Route Cost': df['NEA Route Cost'],
+                        'NWE Route Cost': df['NWE Route Cost'],
+                        'NEA Volume Adj': df['NEA Volume Adjustment'],
+                        'NWE Volume Adj': df['NWE Volume Adjustment']
+                    })
+                    st.dataframe(comp_df.describe(), use_container_width=True)
+                
+                else:
+                    # Standard view
+                    summary_stats = df[['NEA Outrights', 'NWE Outrights', 'NEA-NWE Arb', 'Max Outrights']].describe()
+                    st.dataframe(summary_stats, use_container_width=True)
                 
             else:
                 st.warning("No data returned. Please check your parameters and try again.")
@@ -252,4 +332,43 @@ if st.button("Fetch Netbacks Data", type="primary"):
 if 'netbacks_df' in st.session_state and not st.session_state.netbacks_df.empty:
     st.subheader("Current Data")
     st.write(f"Showing data for **{st.session_state.netbacks_df['FoB Port'].iloc[0]}** via **{selected_via}**")
-    st.dataframe(st.session_state.netbacks_df, use_container_width=True)
+    
+    # Data view options
+    view_option = st.radio(
+        "Select data view:",
+        ["Summary View", "Full Data with Meta", "Meta Components Only"],
+        horizontal=True
+    )
+    
+    if view_option == "Summary View":
+        # Standard columns only
+        summary_cols = ['Release Date', 'FoB Port', 'Month', 'NEA Outrights', 'NEA TTF Basis', 
+                       'NWE Outrights', 'NWE TTF Basis', 'NEA-NWE Arb', 'Max Outrights', 'Max TTF Basis']
+        st.dataframe(st.session_state.netbacks_df[summary_cols], use_container_width=True)
+        
+    elif view_option == "Full Data with Meta":
+        # All columns
+        st.dataframe(st.session_state.netbacks_df, use_container_width=True)
+        
+    else:  # Meta Components Only
+        # Just the meta breakdown fields
+        meta_cols = ['Release Date', 'Month', 'NEA TTF Price', 'NEA TTF Basis Meta', 'NEA DES LNG Price', 
+                    'NEA Route Cost', 'NEA Volume Adjustment', 'NWE TTF Price', 'NWE TTF Basis Meta', 
+                    'NWE DES LNG Price', 'NWE Route Cost', 'NWE Volume Adjustment']
+        st.dataframe(st.session_state.netbacks_df[meta_cols], use_container_width=True)
+        
+        # Add explanation
+        with st.expander("📖 Meta Field Explanations"):
+            st.markdown("""
+            **TTF Price**: The Title Transfer Facility (TTF) gas price component used in calculations
+            
+            **TTF Basis Meta**: The TTF basis component from the meta breakdown
+            
+            **DES LNG Price**: Delivered Ex Ship LNG price component
+            
+            **Route Cost**: The shipping/transportation cost for the specific route
+            
+            **Volume Adjustment**: Adjustments made for volume considerations in the netback calculation
+            
+            *Note: The final netback is calculated as: DES LNG Price - Route Cost + Volume Adjustment*
+            """)
