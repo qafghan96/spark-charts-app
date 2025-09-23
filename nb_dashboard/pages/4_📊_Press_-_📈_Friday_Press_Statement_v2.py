@@ -304,11 +304,11 @@ if st.session_state.press_data_loaded and selected_dataset in st.session_state.d
         st.metric("Latest Price", f"${stats['Latest Price']:,.0f}")
     with col2:
         if stats['Record Low Since']['Price'] != 'N/A':
-            st.metric("Record Low", f"${stats['Record Low Since']['Price']:,.0f}")
+            st.metric("Lowest Since", f"${stats['Record Low Since']['Price']:,.0f}")
             st.caption(f"Since {stats['Record Low Since']['Date']}")
     with col3:
         if stats['Record High Since']['Price'] != 'N/A':
-            st.metric("Record High", f"${stats['Record High Since']['Price']:,.0f}")
+            st.metric("Highest Since", f"${stats['Record High Since']['Price']:,.0f}")
             st.caption(f"Since {stats['Record High Since']['Date']}")
     with col4:
         weekly_change = data['weekly_df']['Diff'].iloc[0]
