@@ -138,26 +138,29 @@ def weekly(df, day, product):
     return new_df
 
 def fuzzy_date_match(target_date, df, tolerance_days=7):
-    """Find the closest date in DataFrame within tolerance."""
+    """Find the closest date in DataFrame within tolerance. Returns (price, actual_date)."""
     target_dt = datetime.strptime(target_date, '%Y-%m-%d')
     
     # Try exact match first
     if target_date in df['Release Date'].values:
-        return df[df['Release Date'] == target_date]['Price'].values[0]
+        price = df[df['Release Date'] == target_date]['Price'].values[0]
+        return price, target_date
     
     # Try fuzzy matching within tolerance
     for delta in range(1, tolerance_days + 1):
         # Try earlier dates
         earlier_date = (target_dt - timedelta(days=delta)).strftime('%Y-%m-%d')
         if earlier_date in df['Release Date'].values:
-            return df[df['Release Date'] == earlier_date]['Price'].values[0]
+            price = df[df['Release Date'] == earlier_date]['Price'].values[0]
+            return price, earlier_date
         
         # Try later dates
         later_date = (target_dt + timedelta(days=delta)).strftime('%Y-%m-%d')
         if later_date in df['Release Date'].values:
-            return df[df['Release Date'] == later_date]['Price'].values[0]
+            price = df[df['Release Date'] == later_date]['Price'].values[0]
+            return price, later_date
     
-    return np.nan
+    return np.nan, 'N/A'
 
 def calculate_yearly_comparisons(df):
     """Calculate improved yearly comparisons with fuzzy date matching."""
@@ -166,6 +169,7 @@ def calculate_yearly_comparisons(df):
     current_datetime = datetime.strptime(current_date, '%Y-%m-%d')
     
     yearly_data = {'Current': current_price}
+    yearly_dates = {'Current': current_date}
     yearly_diffs = {'Current': current_price}
     
     for year_back in range(1, 6):
@@ -174,15 +178,27 @@ def calculate_yearly_comparisons(df):
         target_date_str = target_date.strftime('%Y-%m-%d')
         
         # Use fuzzy matching with 7-day tolerance
-        historical_price = fuzzy_date_match(target_date_str, df, tolerance_days=7)
+        historical_price, actual_date = fuzzy_date_match(target_date_str, df, tolerance_days=7)
         
         yearly_data[f'Year - {year_back}'] = historical_price
+        yearly_dates[f'Year - {year_back}'] = actual_date
         if not np.isnan(historical_price):
             yearly_diffs[f'Year{year_back}-diff'] = current_price - historical_price
         else:
             yearly_diffs[f'Year{year_back}-diff'] = np.nan
     
-    return pd.DataFrame([yearly_data]), pd.DataFrame([yearly_diffs])
+    # Create DataFrames with release dates as a separate row
+    prices_df = pd.DataFrame([yearly_data])
+    dates_df = pd.DataFrame([yearly_dates])
+    diffs_df = pd.DataFrame([yearly_diffs])
+    
+    # Combine prices and dates into single DataFrame
+    combined_df = pd.concat([
+        pd.DataFrame([yearly_data], index=['Price']),
+        pd.DataFrame([yearly_dates], index=['Release Date'])
+    ])
+    
+    return combined_df, diffs_df
 
 def generate_statistics(df, dataset_name):
     """Generate key statistics for press statement."""
