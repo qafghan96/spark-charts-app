@@ -103,7 +103,7 @@ def hist_sort(data, product):
     histdf['Price'] = pd.to_numeric(histdf['Price'])
     return histdf
 
-def weekly(df, day, product):
+def weekly(df, day, product=None):
     """Filter DataFrame to specific weekdays and calculate weekly differences."""
     df = df.copy()  # Fix pandas warning
     dates = df['Release Date'].to_list()
@@ -111,14 +111,20 @@ def weekly(df, day, product):
     
     for d in dates:
         d2 = datetime.strptime(d, '%Y-%m-%d')
-        if product == 'freight':
-            if d2.year < 2024:
-                if day[1] == d2.strftime('%A'):
-                    dates_weekly.append(d)
+        # If day is a list (legacy format), handle it
+        if isinstance(day, list):
+            if product == 'freight':
+                if d2.year < 2024:
+                    if day[1] == d2.strftime('%A'):
+                        dates_weekly.append(d)
+                else:
+                    if day[0] == d2.strftime('%A'):
+                        dates_weekly.append(d)
             else:
                 if day[0] == d2.strftime('%A'):
                     dates_weekly.append(d)
         else:
+            # Single day string
             if day == d2.strftime('%A'):
                 dates_weekly.append(d)
     
@@ -242,7 +248,7 @@ if 'press_data_loaded' not in st.session_state:
 # Configuration
 st.subheader("Configuration")
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     selected_dataset = st.selectbox(
         "Select Dataset", 
@@ -251,15 +257,25 @@ with col1:
     )
 
 with col2:
+    selected_weekday = st.selectbox(
+        "Select Weekday for Analysis",
+        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        index=4,  # Default to Friday
+        help="Choose which day of the week to use for calculating weekly differences"
+    )
+
+with col3:
     if st.button("Load All Data", type="primary"):
+        if selected_weekday != "Friday":
+            st.info(f"📅 Using {selected_weekday} as the analysis day instead of the historical defaults")
         with st.spinner("Loading historical data for all datasets..."):
             try:
-                # Dataset configurations
+                # Dataset configurations - use selected weekday
                 datasets_config = {
-                    'Spark30S (Freight)': {'ticker': 'spark30s', 'vessel': '174-2stroke', 'weekdays': ['Friday', 'Tuesday'], 'product': 'freight'},
-                    'Spark25S (Freight)': {'ticker': 'spark25s', 'vessel': '174-2stroke', 'weekdays': ['Friday', 'Tuesday'], 'product': 'freight'},
-                    'SparkNWE-B-F (Cargo Basis)': {'ticker': 'sparknwe-b-f', 'vessel': None, 'weekdays': 'Thursday', 'product': 'cargo'},
-                    'SparkNWE-F (Cargo DES)': {'ticker': 'sparknwe-f', 'vessel': None, 'weekdays': 'Thursday', 'product': 'cargo'}
+                    'Spark30S (Freight)': {'ticker': 'spark30s', 'vessel': '174-2stroke', 'weekdays': selected_weekday, 'product': 'freight'},
+                    'Spark25S (Freight)': {'ticker': 'spark25s', 'vessel': '174-2stroke', 'weekdays': selected_weekday, 'product': 'freight'},
+                    'SparkNWE-B-F (Cargo Basis)': {'ticker': 'sparknwe-b-f', 'vessel': None, 'weekdays': selected_weekday, 'product': 'cargo'},
+                    'SparkNWE-F (Cargo DES)': {'ticker': 'sparknwe-f', 'vessel': None, 'weekdays': selected_weekday, 'product': 'cargo'}
                 }
                 
                 progress_bar = st.progress(0)
@@ -405,8 +421,9 @@ with st.expander("ℹ️ About This Analysis"):
     - **Statistical Analysis**: Identifies record highs, lows, and significant weekly changes
     
     **Weekly Day Logic:**
-    - Freight contracts: Friday releases (2024+), Tuesday releases (pre-2024)
-    - Cargo contracts: Thursday releases
+    - You can now select any weekday for analysis using the dropdown
+    - Historical default logic: Freight contracts used Friday releases (2024+), Tuesday releases (pre-2024); Cargo contracts used Thursday releases
+    - The selected weekday will be applied to all datasets for consistent analysis
     
     This analysis is designed to support press statement preparation with accurate historical context and market insights.
     """)
