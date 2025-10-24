@@ -17,6 +17,8 @@ from utils import (
     get_credentials,
     get_access_token,
     api_get,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("📈 Spot Seasonality Analysis")
@@ -192,6 +194,9 @@ if 'price_df' in st.session_state:
     # Chart Configuration
     st.subheader("Seasonality Chart Configuration")
     
+    # Add axis controls
+    axis_controls = add_axis_controls(expanded=True)
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -351,34 +356,19 @@ if 'price_df' in st.session_state:
         plt.xticks(filtered_xpos, filtered_xlabels, rotation=45 if chart_style == "Monthly Labels" else 0)
         
         # Set x-axis limits
-        ax.set_xlim(x_min, x_max)
-        
-        # Y-axis scaling
-        if auto_scale_y:
-            y_values = month_filtered_df['USDperday'].dropna()
-            if show_range and highlight_year in selected_years:
-                highlight_df = month_filtered_df[month_filtered_df['Year'] == highlight_year]
-                if not highlight_df.empty:
-                    y_values_with_range = pd.concat([
-                        y_values, 
-                        highlight_df['USDperdayMin'].dropna(),
-                        highlight_df['USDperdayMax'].dropna()
-                    ])
-                    y_min = y_values_with_range.min()
-                    y_max = y_values_with_range.max()
-                else:
-                    y_min = y_values.min()
-                    y_max = y_values.max()
-            else:
-                y_min = y_values.min()
-                y_max = y_values.max()
-            
-            y_range = y_max - y_min
-            padding = y_range * 0.1 if y_range > 0 else 1000
-            plt.ylim(max(0, y_min - padding), y_max + padding)
+        if not axis_controls['x_auto']:
+            ax.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
         else:
-            # Manual Y-axis scaling
-            plt.ylim(y_min_manual, y_max_manual)
+            ax.set_xlim(x_min, x_max)
+        
+        # Apply axis limits using the utility function
+        y_cols = ['USDperday']
+        if show_range and highlight_year in selected_years:
+            highlight_df = month_filtered_df[month_filtered_df['Year'] == highlight_year]
+            if not highlight_df.empty:
+                y_cols.extend(['USDperdayMin', 'USDperdayMax'])
+        
+        apply_axis_limits(ax, axis_controls, data_df=month_filtered_df, y_cols=y_cols)
         
         # Format y-axis with currency AFTER setting the limits
         current_values = plt.gca().get_yticks()

@@ -12,6 +12,8 @@ from utils import (
     get_credentials,
     get_access_token,
     build_price_df,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("LNG Espresso")
@@ -33,38 +35,58 @@ contracts = {
 
 limit = st.slider("Number of releases", min_value=12, max_value=120, value=60, step=12)
 
+# Add axis controls
+axis_controls = add_axis_controls(expanded=True)
+
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pandas as pd
 sns.set_theme(style="whitegrid")
 
-fig, ax = plt.subplots(figsize=(15, 7))
-ax.set_xlabel("Release Date")
+if st.button("Generate Chart", type="primary"):
+    fig, ax = plt.subplots(figsize=(15, 7))
+    ax.set_xlabel("Release Date")
 
 colors = {
     "Spark25S Pacific": "#4F41F4",
     "Spark30S Atlantic": "#48C38D",
 }
 
-# Store dataframes and latest prices
-price_data = {}
-
-for name, ticker in contracts.items():
-    df = build_price_df(token, ticker, limit=limit)
-    if df.empty:
-        continue
-    ax.plot(df["Release Date"], df["Spark"], color=colors.get(name, "#333"), linewidth=3.0, label=name)
-    ax.scatter(df["Release Date"].iloc[0], df["Spark"].iloc[0], color=colors.get(name, "#333"), s=120)
+    # Store dataframes and latest prices
+    price_data = {}
+    all_data = []
     
-    # Store latest price data
-    price_data[name] = {
-        "latest_price": df["Spark"].iloc[0],
-        "latest_date": df["Release Date"].iloc[0]
-    }
+    for name, ticker in contracts.items():
+        df = build_price_df(token, ticker, limit=limit)
+        if df.empty:
+            continue
+        ax.plot(df["Release Date"], df["Spark"], color=colors.get(name, "#333"), linewidth=3.0, label=name)
+        ax.scatter(df["Release Date"].iloc[0], df["Spark"].iloc[0], color=colors.get(name, "#333"), s=120)
+        
+        # Store data for axis limits
+        all_data.append(df)
+        
+        # Store latest price data
+        price_data[name] = {
+            "latest_price": df["Spark"].iloc[0],
+            "latest_date": df["Release Date"].iloc[0]
+        }
+    
+    # Apply axis limits using the utility function
+    if all_data:
+        combined_data = pd.concat(all_data, ignore_index=True)
+        apply_axis_limits(ax, axis_controls, data_df=combined_data, y_cols=['Spark'])
+    
+    sns.despine(left=True, bottom=True)
+    ax.legend()
+    st.pyplot(fig)
+    
+    # Store price data for display outside the conditional
+    st.session_state.price_data = price_data
 
-ax.set_ylim(10000, 60000)
-sns.despine(left=True, bottom=True)
-ax.legend()
-st.pyplot(fig)
+# Display latest prices if they exist
+if 'price_data' in st.session_state and st.session_state.price_data:
+    price_data = st.session_state.price_data
 
 # Display latest prices
 st.subheader("Latest Release Date Prices")

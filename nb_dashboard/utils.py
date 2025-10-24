@@ -10,6 +10,104 @@ try:
 except Exception:
     pio = None
 
+# ------- Chart Axis Controls -------
+def add_axis_controls(chart_type="matplotlib", expanded=False):
+    """
+    Add axis limit controls to Streamlit sidebar or main area.
+    
+    Args:
+        chart_type (str): Type of chart ('matplotlib', 'plotly', etc.)
+        expanded (bool): Whether to show controls in an expanded section
+    
+    Returns:
+        dict: Dictionary containing axis limits and auto settings
+            {
+                'x_auto': bool,
+                'y_auto': bool, 
+                'x_min': float or None,
+                'x_max': float or None,
+                'y_min': float or None,
+                'y_max': float or None
+            }
+    """
+    if expanded:
+        with st.expander("📊 Chart Axis Controls", expanded=False):
+            return _create_axis_controls()
+    else:
+        st.subheader("📊 Chart Axis Controls")
+        return _create_axis_controls()
+
+def _create_axis_controls():
+    """Internal function to create axis control widgets."""
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**X-Axis**")
+        x_auto = st.checkbox("Auto X-Axis", value=True, help="Automatically set X-axis limits based on data")
+        
+        x_min = None
+        x_max = None
+        if not x_auto:
+            x_min = st.number_input("X-Axis Min", value=0.0, help="Minimum value for X-axis")
+            x_max = st.number_input("X-Axis Max", value=100.0, help="Maximum value for X-axis")
+    
+    with col2:
+        st.write("**Y-Axis**")
+        y_auto = st.checkbox("Auto Y-Axis", value=True, help="Automatically set Y-axis limits based on data")
+        
+        y_min = None
+        y_max = None
+        if not y_auto:
+            y_min = st.number_input("Y-Axis Min", value=0.0, help="Minimum value for Y-axis")
+            y_max = st.number_input("Y-Axis Max", value=100.0, help="Maximum value for Y-axis")
+    
+    return {
+        'x_auto': x_auto,
+        'y_auto': y_auto,
+        'x_min': x_min,
+        'x_max': x_max,
+        'y_min': y_min,
+        'y_max': y_max
+    }
+
+def apply_axis_limits(ax, axis_controls, data_df=None, x_col=None, y_cols=None):
+    """
+    Apply axis limits to matplotlib axes based on user controls.
+    
+    Args:
+        ax: matplotlib axes object
+        axis_controls (dict): Result from add_axis_controls()
+        data_df (pd.DataFrame, optional): DataFrame for auto-scaling
+        x_col (str, optional): Column name for x-axis data
+        y_cols (list, optional): List of column names for y-axis data
+    """
+    # Apply X-axis limits
+    if not axis_controls['x_auto']:
+        if axis_controls['x_min'] is not None and axis_controls['x_max'] is not None:
+            ax.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
+    
+    # Apply Y-axis limits
+    if not axis_controls['y_auto']:
+        if axis_controls['y_min'] is not None and axis_controls['y_max'] is not None:
+            ax.set_ylim(axis_controls['y_min'], axis_controls['y_max'])
+    else:
+        # Auto-scaling with padding if data is provided
+        if data_df is not None and y_cols is not None:
+            try:
+                all_y_values = []
+                for col in y_cols:
+                    if col in data_df.columns:
+                        all_y_values.extend(data_df[col].dropna().tolist())
+                
+                if all_y_values:
+                    y_min = min(all_y_values)
+                    y_max = max(all_y_values)
+                    y_range = y_max - y_min
+                    padding = y_range * 0.05  # 5% padding
+                    ax.set_ylim(y_min - padding, y_max + padding)
+            except Exception:
+                pass  # Fall back to matplotlib's default scaling
+
 # ------- Spark API helpers (self-contained) -------
 import json
 import requests

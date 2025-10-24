@@ -16,6 +16,8 @@ if APP_ROOT not in sys.path:
 from utils import (
     get_credentials,
     get_access_token,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("Analytics - US Arb Month Tracker")
@@ -271,42 +273,51 @@ if st.button("Generate US Arb Month Tracker", type="primary"):
                     monthly_df = sort_years(monthly_df)
                     year_dataframes.append((month_str, monthly_df))
             
-            # Create the plot
-            sns.set_theme(style="whitegrid")
-            fig, ax = plt.subplots(figsize=(15, 6))
+            # Add axis controls
+            axis_controls = add_axis_controls(expanded=True)
             
-            plt.axhline(0, color='grey')
-            
-            colors = ['darkorange', 'darkblue', 'firebrick']
-            linewidths = [1, 1.5, 2]
-            
-            for i, (month_str, monthly_df) in enumerate(year_dataframes):
-                year = month_str.split('-')[0]
-                ax.plot(monthly_df['Day of Year'], monthly_df['Delta Outrights'], 
-                       color=colors[i % len(colors)], 
-                       label=year, 
-                       linewidth=linewidths[i % len(linewidths)])
-            
-            plt.ylim(-4, 1)
-            
-            # Custom x-axis labels
-            xlabels = ['Y-1', 'September', 'October', 'November', 'December', 'Y+0', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'Year End']
-            xpos = [-152, -121, -91, -60, -32, 0, 30, 60, 90, 121, 152, 182, 213, 244, 274, 305, 335, 365]
-            
-            plt.xticks(xpos, xlabels)
-            plt.title(f'US Arb - {port} - Monthly Arb Evolution (Month: {target_month})')
-            plt.ylabel('$/MMBtu')
-            plt.xlabel('Release Date')
-            
-            # Set x-axis limits
-            if year_dataframes:
-                max_day = max([df['Day of Year'].max() for _, df in year_dataframes if not df.empty])
-                plt.xlim(-152, max_day + 10)
-            
-            ax.legend()
-            sns.despine(left=True, bottom=True)
-            
-            st.pyplot(fig)
+            if st.button("Generate Chart", type="secondary"):
+                # Create the plot
+                sns.set_theme(style="whitegrid")
+                fig, ax = plt.subplots(figsize=(15, 6))
+                
+                plt.axhline(0, color='grey')
+                
+                colors = ['darkorange', 'darkblue', 'firebrick']
+                linewidths = [1, 1.5, 2]
+                
+                for i, (month_str, monthly_df) in enumerate(year_dataframes):
+                    year = month_str.split('-')[0]
+                    ax.plot(monthly_df['Day of Year'], monthly_df['Delta Outrights'], 
+                           color=colors[i % len(colors)], 
+                           label=year, 
+                           linewidth=linewidths[i % len(linewidths)])
+                
+                # Apply axis limits using the utility function
+                all_data = pd.concat([df for _, df in year_dataframes if not df.empty], ignore_index=True)
+                apply_axis_limits(ax, axis_controls, data_df=all_data, y_cols=['Delta Outrights'])
+                
+                # Custom x-axis labels
+                xlabels = ['Y-1', 'September', 'October', 'November', 'December', 'Y+0', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December', 'Year End']
+                xpos = [-152, -121, -91, -60, -32, 0, 30, 60, 90, 121, 152, 182, 213, 244, 274, 305, 335, 365]
+                
+                plt.xticks(xpos, xlabels)
+                plt.title(f'US Arb - {port} - Monthly Arb Evolution (Month: {target_month})')
+                plt.ylabel('$/MMBtu')
+                plt.xlabel('Release Date')
+                
+                # Set x-axis limits
+                if not axis_controls['x_auto']:
+                    ax.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
+                else:
+                    if year_dataframes:
+                        max_day = max([df['Day of Year'].max() for _, df in year_dataframes if not df.empty])
+                        plt.xlim(-152, max_day + 10)
+                
+                ax.legend()
+                sns.despine(left=True, bottom=True)
+                
+                st.pyplot(fig)
             
             # Display summary statistics
             st.subheader("Summary Statistics")

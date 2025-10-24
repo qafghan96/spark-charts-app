@@ -3,10 +3,7 @@ import sys
 import streamlit as st
 import pandas as pd
 import json
-from base64 import b64encode
-from urllib.parse import urljoin
-from urllib import request
-from urllib.error import HTTPError
+import requests
 
 # Ensure we can import sibling module "utils.py" when run as a Streamlit page
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,7 +11,7 @@ APP_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if APP_ROOT not in sys.path:
     sys.path.insert(0, APP_ROOT)
 
-from utils import get_credentials, get_access_token
+from utils import get_credentials, get_access_token, api_get
 
 st.title("🏭 Access Terminal Costs")
 st.caption("Access terminal cost data from the Spark API with downloadable DataFrame functionality.")
@@ -28,29 +25,19 @@ if not client_id or not client_secret:
 scopes = "read:access"
 token = get_access_token(client_id, client_secret, scopes=scopes)
 
-# API functions from the notebook
-API_BASE_URL = "https://api.sparkcommodities.com"
-
+# API functions using the utils module
 def do_api_get_query(uri, access_token):
     """After receiving an Access Token, we can request information from the API."""
-    url = urljoin(API_BASE_URL, uri)
-    
-    headers = {
-        "Authorization": "Bearer {}".format(access_token),
-        "accept": "application/json",
-    }
-    
-    req = request.Request(url, headers=headers)
     try:
-        response = request.urlopen(req)
-    except HTTPError as e:
-        st.error(f"HTTP Error: {e.code}")
+        content = api_get(uri, access_token)
+        return content
+    except requests.exceptions.HTTPError as e:
+        st.error(f"HTTP Error: {e.response.status_code} - {e.response.text}")
+        st.error(f"Request URL: {e.response.url}")
         st.stop()
-    
-    resp_content = response.read()
-    assert response.status == 200, resp_content
-    content = json.loads(resp_content)
-    return content
+    except Exception as e:
+        st.error(f"API Error: {str(e)}")
+        st.stop()
 
 def fetch_price_releases(access_token, limit=4, offset=None):
     query_params = "?limit={}".format(limit)
@@ -151,6 +138,25 @@ with col2:
     if use_extended_data:
         n30_offset = st.slider("Number of 30-release batches", min_value=1, max_value=50, value=1, step=1)
 
+# Debug information
+with st.expander("🔍 Debug Information", expanded=False):
+    st.write("**API Endpoint being used:**")
+    st.code("/beta/sparkr/releases/")
+    st.write("**Scopes:**")
+    st.code("read:access")
+    if token:
+        st.success("✅ Access token obtained successfully")
+    else:
+        st.error("❌ Failed to obtain access token")
+    
+    if st.button("🧪 Test API Connection"):
+        try:
+            test_result = do_api_get_query("/beta/sparkr/releases/?limit=1", token)
+            st.success("✅ API connection successful!")
+            st.json(test_result)
+        except Exception as e:
+            st.error(f"❌ API test failed: {str(e)}")
+
 if st.button("Fetch Data"):
     with st.spinner("Fetching data from Spark API..."):
         try:
@@ -193,6 +199,18 @@ if st.button("Fetch Data"):
             with col4:
                 st.metric("Date Range", f"{hist_df['Release Date'].nunique()} releases")
                 
+        except requests.exceptions.HTTPError as e:
+            st.error(f"HTTP Error: {e.response.status_code}")
+            st.error(f"Response text: {e.response.text}")
+            st.error(f"Request URL: {e.response.url}")
+            if hasattr(e.response, 'json'):
+                try:
+                    error_json = e.response.json()
+                    st.error(f"API Error Details: {json.dumps(error_json, indent=2)}")
+                except:
+                    pass
         except Exception as e:
             st.error(f"Error fetching data: {str(e)}")
-            st.stop()
+            st.error(f"Error type: {type(e).__name__}")
+            import traceback
+            st.error(f"Full traceback: {traceback.format_exc()}")

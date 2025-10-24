@@ -18,6 +18,8 @@ from utils import (
     get_access_token,
     api_get,
     list_netbacks_reference,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("⛽ Netbacks Freight Hire Comparison")
@@ -307,6 +309,9 @@ if 'netbacks_df' in st.session_state:
     # Chart Configuration
     st.subheader("Chart Configuration")
     
+    # Add axis controls
+    axis_controls = add_axis_controls(expanded=True)
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -426,17 +431,9 @@ if 'netbacks_df' in st.session_state:
             # Default position if no data
             ax.legend(loc='upper right', frameon=True, fancybox=True, shadow=True, framealpha=0.9)
         
-        # Y-axis scaling
-        if auto_scale_y:
-            
-            if all_y_values:
-                y_min = min(all_y_values)
-                y_max = max(all_y_values)
-                y_range = y_max - y_min
-                padding = y_range * 0.1 if y_range > 0 else 0.1
-                ax.set_ylim(y_min - padding, y_max + padding)
-        else:
-            ax.set_ylim(y_min_manual, y_max_manual)
+        # Apply axis limits using the utility function
+        arb_cols = [f'Arb {percent}%' for percent in percentages_to_plot]
+        apply_axis_limits(ax, axis_controls, data_df=filtered_df, y_cols=arb_cols)
         
         plt.grid(show_grid, alpha=0.3)
         plt.tight_layout()

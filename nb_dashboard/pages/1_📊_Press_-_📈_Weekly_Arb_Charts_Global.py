@@ -13,6 +13,8 @@ from utils import (
     get_access_token,
     list_netbacks_reference,
     netbacks_history,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("Press - Weekly Arb Charts - Global")
@@ -59,82 +61,102 @@ if include_c:
 num_releases = st.slider("Number of releases", min_value=10, max_value=90, value=30, step=5)
 my_releases = release_dates[:num_releases]
 
+# Add axis controls
+axis_controls = add_axis_controls(expanded=True)
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_theme(style="whitegrid")
 import pandas as pd
 
-fig, ax = plt.subplots(figsize=(12, 6))
-ax.axhline(0, color='grey')
+if st.button("Generate Chart", type="primary"):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ax.axhline(0, color='grey')
 
-uuid_a, _ = port_options[port_a]
-uuid_b, _ = port_options[port_b]
+    uuid_a, _ = port_options[port_a]
+    uuid_b, _ = port_options[port_b]
 
-df_a = netbacks_history(token, uuid_a, port_a, my_releases, via=via_a)
-df_b = netbacks_history(token, uuid_b, port_b, my_releases, via=via_b)
-df_c = None
-if include_c:
-    uuid_c, _ = port_options[port_c]
-    df_c = netbacks_history(token, uuid_c, port_c, my_releases, via=via_c)
+    df_a = netbacks_history(token, uuid_a, port_a, my_releases, via=via_a)
+    df_b = netbacks_history(token, uuid_b, port_b, my_releases, via=via_b)
+    df_c = None
+    if include_c:
+        uuid_c, _ = port_options[port_c]
+        df_c = netbacks_history(token, uuid_c, port_c, my_releases, via=via_c)
 
-if df_a.empty and df_b.empty and (df_c is None or df_c.empty):
-    st.warning("No data returned for the selected ports.")
-else:
-    # Store price data for display
-    port_prices = []
-    
-    if not df_a.empty:
-        ax.plot(df_a['Release Date'], df_a['Delta Outrights'], color='#FFC217', label=f"{port_a} ({via_a})", linewidth=3.0)
-        ax.scatter(df_a['Release Date'].iloc[0], df_a['Delta Outrights'].iloc[0], color='#FFC217', s=120)
-        port_prices.append({
-            "port": f"{port_a} ({via_a})",
-            "price": df_a['Delta Outrights'].iloc[0],
-            "date": df_a['Release Date'].iloc[0],
-            "color": "🟡"
-        })
-    
-    if not df_b.empty:
-        ax.plot(df_b['Release Date'], df_b['Delta Outrights'], color='#4F41F4', label=f"{port_b} ({via_b})", linewidth=3.0)
-        ax.scatter(df_b['Release Date'].iloc[0], df_b['Delta Outrights'].iloc[0], color='#4F41F4', s=120)
-        port_prices.append({
-            "port": f"{port_b} ({via_b})",
-            "price": df_b['Delta Outrights'].iloc[0],
-            "date": df_b['Release Date'].iloc[0],
-            "color": "🟣"
-        })
-    
-    if include_c and df_c is not None and not df_c.empty:
-        ax.plot(df_c['Release Date'], df_c['Delta Outrights'], color='#48C38D', label=f"{port_c} ({via_c})", linewidth=3.0)
-        ax.scatter(df_c['Release Date'].iloc[0], df_c['Delta Outrights'].iloc[0], color='#48C38D', s=120)
-        port_prices.append({
-            "port": f"{port_c} ({via_c})",
-            "price": df_c['Delta Outrights'].iloc[0],
-            "date": df_c['Release Date'].iloc[0],
-            "color": "🟢"
-        })
+    if df_a.empty and df_b.empty and (df_c is None or df_c.empty):
+        st.warning("No data returned for the selected ports.")
+    else:
+        # Store price data for display
+        port_prices = []
+        
+        if not df_a.empty:
+            ax.plot(df_a['Release Date'], df_a['Delta Outrights'], color='#FFC217', label=f"{port_a} ({via_a})", linewidth=3.0)
+            ax.scatter(df_a['Release Date'].iloc[0], df_a['Delta Outrights'].iloc[0], color='#FFC217', s=120)
+            port_prices.append({
+                "port": f"{port_a} ({via_a})",
+                "price": df_a['Delta Outrights'].iloc[0],
+                "date": df_a['Release Date'].iloc[0],
+                "color": "🟡"
+            })
+        
+        if not df_b.empty:
+            ax.plot(df_b['Release Date'], df_b['Delta Outrights'], color='#4F41F4', label=f"{port_b} ({via_b})", linewidth=3.0)
+            ax.scatter(df_b['Release Date'].iloc[0], df_b['Delta Outrights'].iloc[0], color='#4F41F4', s=120)
+            port_prices.append({
+                "port": f"{port_b} ({via_b})",
+                "price": df_b['Delta Outrights'].iloc[0],
+                "date": df_b['Release Date'].iloc[0],
+                "color": "🟣"
+            })
+        
+        if include_c and df_c is not None and not df_c.empty:
+            ax.plot(df_c['Release Date'], df_c['Delta Outrights'], color='#48C38D', label=f"{port_c} ({via_c})", linewidth=3.0)
+            ax.scatter(df_c['Release Date'].iloc[0], df_c['Delta Outrights'].iloc[0], color='#48C38D', s=120)
+            port_prices.append({
+                "port": f"{port_c} ({via_c})",
+                "price": df_c['Delta Outrights'].iloc[0],
+                "date": df_c['Release Date'].iloc[0],
+                "color": "🟢"
+            })
 
-    # Shaded band similar to notebook
-    # Choose reference df for band/x-limits: prefer B, then A, then C
-    ref_df = None
-    for candidate in [df_b, df_a, (df_c if include_c else None)]:
-        if candidate is not None and not candidate.empty:
-            ref_df = candidate
-            break
-    if not ref_df.empty:
-        negrange = [ref_df['Release Date'].iloc[-1] - pd.Timedelta(20, unit='day'), ref_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')]
-        ax.plot(negrange, [-3.0, -3.0], color='red', alpha=0.05)
-        ax.plot(negrange, [0, 0], color='red', alpha=0.05)
-        ax.fill_between(negrange, 0, -3.0, color='red', alpha=0.05)
+        # Shaded band similar to notebook
+        # Choose reference df for band/x-limits: prefer B, then A, then C
+        ref_df = None
+        for candidate in [df_b, df_a, (df_c if include_c else None)]:
+            if candidate is not None and not candidate.empty:
+                ref_df = candidate
+                break
+        if not ref_df.empty:
+            negrange = [ref_df['Release Date'].iloc[-1] - pd.Timedelta(20, unit='day'), ref_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')]
+            ax.plot(negrange, [-3.0, -3.0], color='red', alpha=0.05)
+            ax.plot(negrange, [0, 0], color='red', alpha=0.05)
+            ax.fill_between(negrange, 0, -3.0, color='red', alpha=0.05)
 
-    ax.set_ylabel('$/MMBtu')
-    ax.set_xlabel('Release Date')
-    sns.despine(left=True, bottom=True)
-    # View window similar to notebook
-    if not ref_df.empty:
-        plt.xlim([ref_df['Release Date'].iloc[-1]-pd.Timedelta(1, unit='day'), ref_df['Release Date'].iloc[0]+pd.Timedelta(6, unit='day')])
-    plt.ylim(-0.5, 0.5)
-    plt.tight_layout()
-    st.pyplot(fig)
+        ax.set_ylabel('$/MMBtu')
+        ax.set_xlabel('Release Date')
+        sns.despine(left=True, bottom=True)
+        
+        # Apply axis limits using the utility function
+        all_data = pd.concat([df for df in [df_a, df_b, df_c] if df is not None and not df.empty], ignore_index=True)
+        apply_axis_limits(ax, axis_controls, data_df=all_data, y_cols=['Delta Outrights'])
+        
+        # Set x-axis limits if not auto
+        if not axis_controls['x_auto']:
+            ax.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
+        else:
+            # View window similar to notebook
+            if not ref_df.empty:
+                plt.xlim([ref_df['Release Date'].iloc[-1]-pd.Timedelta(1, unit='day'), ref_df['Release Date'].iloc[0]+pd.Timedelta(6, unit='day')])
+                
+        plt.tight_layout()
+        st.pyplot(fig)
+        
+        # Display latest prices and store for access outside the conditional
+        st.session_state.port_prices = port_prices
+
+# Display latest prices if they exist
+if 'port_prices' in st.session_state and st.session_state.port_prices:
+    port_prices = st.session_state.port_prices
     
     # Display latest prices
     st.subheader("Latest Release Date Prices")

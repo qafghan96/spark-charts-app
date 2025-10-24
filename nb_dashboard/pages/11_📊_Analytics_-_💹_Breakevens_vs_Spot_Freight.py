@@ -18,6 +18,8 @@ from utils import (
     get_credentials,
     get_access_token,
     api_get,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("💹 US Arb Freight Breakevens vs Spot Freight Rates")
@@ -189,6 +191,9 @@ with col2:
         help="End date for the chart display range"
     )
 
+# Add axis controls
+axis_controls = add_axis_controls(expanded=True)
+
 if st.button("Generate Chart", type="primary"):
     with st.spinner("Fetching data..."):
         try:
@@ -250,30 +255,16 @@ if st.button("Generate Chart", type="primary"):
     start_datetime = datetime.datetime.combine(start_date, datetime.time.min)
     end_datetime = datetime.datetime.combine(end_date, datetime.time.max)
     
-    # Filter data to the selected date range for y-axis scaling
-    date_filtered_df = merge_df[
-        (merge_df['Release Date'] >= start_datetime) & 
-        (merge_df['Release Date'] <= end_datetime)
-    ]
-    
-    # Auto-adjust y-axis based on filtered data
-    if not date_filtered_df.empty:
-        y_values = pd.concat([date_filtered_df['USDperday'], date_filtered_df['FreightBreakeven']])
-        y_min = y_values.min()
-        y_max = y_values.max()
-        
-        # Add some padding (10% of the range)
-        y_range = y_max - y_min
-        padding = y_range * 0.1
-        y_min_padded = y_min - padding
-        y_max_padded = y_max + padding
-        
-        ax2.set_ylim(y_min_padded, y_max_padded)
+    # Apply axis limits based on user controls
+    if not axis_controls['x_auto']:
+        # Use user-defined X limits
+        ax2.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
     else:
-        # Fallback to default if no data in range
-        ax2.set_ylim(-100000, 120000)
+        # Use date range for X-axis
+        ax2.set_xlim(start_datetime, end_datetime)
     
-    ax2.set_xlim(start_datetime, end_datetime)
+    # Apply Y-axis limits using the utility function
+    apply_axis_limits(ax2, axis_controls, data_df=merge_df, y_cols=['USDperday', 'FreightBreakeven'])
 
     plt.title(f'{freight_ticker.upper()} (Atlantic) vs. US Arb [M+1] Freight Breakeven Level')
     sns.despine(left=True, bottom=True)

@@ -18,6 +18,8 @@ if APP_ROOT not in sys.path:
 from utils import (
     get_credentials,
     get_access_token,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("Analytics - DES Hub Percentage In The Money")
@@ -354,36 +356,43 @@ if st.button("Generate Percentage In The Money Analysis", type="primary"):
     # Calculate fraction of terminals in the money
     wtp_df['Fraction'] = wtp_df[terms].gt(0).sum(axis=1) / (len(terms) - wtp_df[terms].isna().sum(axis=1))
     
-    # Create plot with dual y-axes
-    sns.set_style('whitegrid')
-    fig, ax1 = plt.subplots(figsize=(15, 7))
+    # Add axis controls
+    axis_controls = add_axis_controls(expanded=True)
     
-    # Plot WTP data on primary y-axis
-    ax1.plot(wtp_df['Release Date'], wtp_df['Ave'], color='steelblue', linewidth=2.0, zorder=0, label='European Average WTP')
-    ax1.plot(wtp_df['Release Date'], wtp_df['Min'], color='steelblue', linewidth=1.0, alpha=0.06)
-    ax1.plot(wtp_df['Release Date'], wtp_df['Max'], color='steelblue', linewidth=1.0, alpha=0.06)
-    ax1.fill_between(wtp_df['Release Date'], wtp_df['Min'], wtp_df['Max'], color='steelblue', alpha=0.2)
+    if st.button("Generate Chart", type="secondary"):
+        # Create plot with dual y-axes
+        sns.set_style('whitegrid')
+        fig, ax1 = plt.subplots(figsize=(15, 7))
     
-    ax1.set_ylabel('WTP ($/MMBtu)', color='steelblue')
-    ax1.tick_params(axis='y', labelcolor='steelblue')
-    ax1.axhline(0, color='black', linestyle='-', alpha=0.3)
-    
-    # Create secondary y-axis for percentage
-    ax2 = ax1.twinx()
-    ax2.plot(wtp_df['Release Date'], wtp_df['Fraction']*100, color='firebrick', linewidth=2.0, alpha=0.8, zorder=1, label="Perc. of Terminals 'in the money'")
-    ax2.yaxis.set_major_formatter(mtick.PercentFormatter())
-    ax2.set_ylabel("Percentage of Terminals 'In The Money'", color='firebrick')
-    ax2.tick_params(axis='y', labelcolor='firebrick')
-    ax2.grid(False)
-    
-    plt.title(f"European Average WTP & Range vs Percentage of terminals 'in the money' ({month})")
-    ax1.legend(loc='upper left')
-    ax2.legend(loc='upper right')
-    
-    plt.xlabel('Release Date')
-    sns.despine(left=True, bottom=True)
-    
-    st.pyplot(fig)
+        # Plot WTP data on primary y-axis
+        ax1.plot(wtp_df['Release Date'], wtp_df['Ave'], color='steelblue', linewidth=2.0, zorder=0, label='European Average WTP')
+        ax1.plot(wtp_df['Release Date'], wtp_df['Min'], color='steelblue', linewidth=1.0, alpha=0.06)
+        ax1.plot(wtp_df['Release Date'], wtp_df['Max'], color='steelblue', linewidth=1.0, alpha=0.06)
+        ax1.fill_between(wtp_df['Release Date'], wtp_df['Min'], wtp_df['Max'], color='steelblue', alpha=0.2)
+        
+        # Apply axis limits to primary y-axis
+        apply_axis_limits(ax1, axis_controls, data_df=wtp_df, y_cols=['Ave', 'Min', 'Max'])
+        
+        ax1.set_ylabel('WTP ($/MMBtu)', color='steelblue')
+        ax1.tick_params(axis='y', labelcolor='steelblue')
+        ax1.axhline(0, color='black', linestyle='-', alpha=0.3)
+        
+        # Create secondary y-axis for percentage
+        ax2 = ax1.twinx()
+        ax2.plot(wtp_df['Release Date'], wtp_df['Fraction']*100, color='firebrick', linewidth=2.0, alpha=0.8, zorder=1, label="Perc. of Terminals 'in the money'")
+        ax2.yaxis.set_major_formatter(mtick.PercentFormatter())
+        ax2.set_ylabel("Percentage of Terminals 'In The Money'", color='firebrick')
+        ax2.tick_params(axis='y', labelcolor='firebrick')
+        ax2.grid(False)
+        
+        plt.title(f"European Average WTP & Range vs Percentage of terminals 'in the money' ({month})")
+        ax1.legend(loc='upper left')
+        ax2.legend(loc='upper right')
+        
+        plt.xlabel('Release Date')
+        sns.despine(left=True, bottom=True)
+        
+        st.pyplot(fig)
     
     # Display summary statistics
     st.subheader("Analysis Summary")

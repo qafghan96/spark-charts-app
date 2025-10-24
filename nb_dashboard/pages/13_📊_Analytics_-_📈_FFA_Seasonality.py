@@ -17,6 +17,8 @@ from utils import (
     get_access_token,
     list_contracts,
     build_price_df,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("📈 FFA Seasonality Charts")
@@ -54,6 +56,9 @@ with col2:
     selected_month = st.selectbox("Contract Month to Analyze", options=months, index=11)  # Default to Dec
     
 limit = st.slider("Historical Data Limit", min_value=100, max_value=1000, value=900, step=50)
+
+# Add axis controls
+axis_controls = add_axis_controls(expanded=True)
 
 if st.button("Generate Seasonality Chart", type="primary") and selected_contract:
     with st.spinner(f"Fetching {selected_contract} data..."):
@@ -123,8 +128,14 @@ if st.button("Generate Seasonality Chart", type="primary") and selected_contract
 
             plt.xticks(xpos, xlabels)
             
-            if max_dates:
-                plt.xlim(-365, max(max_dates))
+            # Apply axis limits based on user controls
+            if not axis_controls['x_auto']:
+                ax.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
+            elif max_dates:
+                ax.set_xlim(-365, max(max_dates))
+            
+            # Apply Y-axis limits using the utility function
+            apply_axis_limits(ax, axis_controls, data_df=df, y_cols=['Spark'])
 
             plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
             plt.tight_layout()

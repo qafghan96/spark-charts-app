@@ -17,6 +17,8 @@ from utils import (
     get_credentials,
     get_access_token,
     api_get,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("🏭 DES Hub Netbacks - WTP Country Comparison")
@@ -282,6 +284,9 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
         # Chart Configuration
         st.subheader("Chart Configuration")
         
+        # Add axis controls
+        axis_controls = add_axis_controls(expanded=True)
+        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -349,23 +354,20 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
                                  date_filtered_df.loc[latest_idx, terminal], 
                                  color=colors[i], marker='o', s=80)
             
-            # Auto-scale y-axis based on filtered data
-            if all_y_values:
-                y_min = min(all_y_values)
-                y_max = max(all_y_values)
-                y_range = y_max - y_min
-                padding = y_range * 0.1 if y_range > 0 else 0.1
-                y_min_padded = y_min - padding
-                y_max_padded = y_max + padding
-                ax.set_ylim(y_min_padded, y_max_padded)
+            # Apply axis limits using the utility function
+            apply_axis_limits(ax, axis_controls, data_df=date_filtered_df, y_cols=selected_terminals)
             
-            # Set x-axis limits
-            ax.set_xlim(start_datetime, end_datetime)
+            # Set x-axis limits if not auto
+            if not axis_controls['x_auto']:
+                ax.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
+            else:
+                ax.set_xlim(start_datetime, end_datetime)
             
             # Negative shading
             if all_y_values and min(all_y_values) < 0:
+                y_limits = ax.get_ylim()
                 ax.fill_between([start_datetime, end_datetime], 
-                               0, min(y_min_padded, -0.1), 
+                               0, min(y_limits[0], -0.1), 
                                color='red', alpha=0.05)
             
             plt.title(f'Terminal WTP - {stored_month}')
@@ -382,6 +384,9 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
         
         # Chart Configuration
         st.subheader("Chart Configuration")
+        
+        # Add axis controls
+        axis_controls = add_axis_controls(expanded=True)
         
         col1, col2 = st.columns(2)
         
@@ -480,23 +485,21 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
                              color=colors[i], marker='o', s=80)
                     st.write(f"**{country}:** {date_filtered_df.loc[latest_idx, country_ave]:.3f}")
             
-            # Auto-scale y-axis based on filtered data
-            if all_y_values:
-                y_min = min(all_y_values)
-                y_max = max(all_y_values)
-                y_range = y_max - y_min
-                padding = y_range * 0.1 if y_range > 0 else 0.1
-                y_min_padded = y_min - padding
-                y_max_padded = y_max + padding
-                ax.set_ylim(y_min_padded, y_max_padded)
+            # Apply axis limits using the utility function
+            country_cols = [f'{country} Ave' for country in selected_countries]
+            apply_axis_limits(ax, axis_controls, data_df=date_filtered_df, y_cols=country_cols)
             
-            # Set x-axis limits
-            ax.set_xlim(start_datetime, end_datetime)
+            # Set x-axis limits if not auto
+            if not axis_controls['x_auto']:
+                ax.set_xlim(axis_controls['x_min'], axis_controls['x_max'])
+            else:
+                ax.set_xlim(start_datetime, end_datetime)
             
             # Negative shading
             if all_y_values and min(all_y_values) < 0:
+                y_limits = ax.get_ylim()
                 ax.fill_between([start_datetime, end_datetime], 
-                               0, min(y_min_padded, -0.1), 
+                               0, min(y_limits[0], -0.1), 
                                color='red', alpha=0.05)
             
             plt.title(f'Country Average WTP & Range - {stored_month}')

@@ -17,6 +17,8 @@ if APP_ROOT not in sys.path:
 from utils import (
     get_credentials,
     get_access_token,
+    add_axis_controls,
+    apply_axis_limits,
 )
 
 st.title("Analytics - DES Hub Marginal Terminal")
@@ -356,36 +358,42 @@ if st.button("Generate Marginal Terminal Analysis", type="primary"):
     wtp_df['Marginal Terminal'] = wtp_df[terms].abs().idxmin(axis="columns").copy()
     marg_list = list(wtp_df['Marginal Terminal'].unique())
     
-    # Create plot
-    sns.set_style('whitegrid')
-    fig, ax = plt.subplots(figsize=(15, 7))
+    # Add axis controls
+    axis_controls = add_axis_controls(expanded=True)
     
-    ax.plot(wtp_df['Release Date'], wtp_df['Ave'], color='mediumseagreen', linewidth=2.0, label='European Average WTP')
-    
-    # Plot marginal terminals
-    colors = plt.cm.Set3(np.linspace(0, 1, len(marg_list)))
-    for i, m in enumerate(marg_list):
-        if m in wtp_df.columns:  # Only plot if terminal column exists
-            tdf = wtp_df[wtp_df['Marginal Terminal'] == m][['Release Date', m]]
-            ax.scatter(tdf['Release Date'], tdf[m], label=m, color=colors[i], alpha=0.7)
-    
-    # Shade negative area
-    negrange = [wtp_df['Release Date'].iloc[-1] - pd.Timedelta(20, unit='day'), 
-                wtp_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')]
-    ax.plot(negrange, [-1.0, -1.0], color='red', alpha=0.05)
-    ax.plot(negrange, [0, 0], color='red', alpha=0.05)
-    ax.fill_between(negrange, 0, -1.0, color='red', alpha=0.05)
-    
-    # Chart aesthetics
-    ax.set_ylim(-0.5, 1.4)
-    ax.axhline(0, color='black', linestyle='-', alpha=0.3)
-    plt.title(f'European Average WTP & Range vs Marginal Cargo ({month})')
-    plt.ylabel('$/MMBtu')
-    plt.xlabel('Release Date')
-    plt.legend()
-    sns.despine(left=True, bottom=True)
-    
-    st.pyplot(fig)
+    if st.button("Generate Chart", type="secondary"):
+        # Create plot
+        sns.set_style('whitegrid')
+        fig, ax = plt.subplots(figsize=(15, 7))
+        
+        ax.plot(wtp_df['Release Date'], wtp_df['Ave'], color='mediumseagreen', linewidth=2.0, label='European Average WTP')
+        
+        # Plot marginal terminals
+        colors = plt.cm.Set3(np.linspace(0, 1, len(marg_list)))
+        for i, m in enumerate(marg_list):
+            if m in wtp_df.columns:  # Only plot if terminal column exists
+                tdf = wtp_df[wtp_df['Marginal Terminal'] == m][['Release Date', m]]
+                ax.scatter(tdf['Release Date'], tdf[m], label=m, color=colors[i], alpha=0.7)
+        
+        # Shade negative area
+        negrange = [wtp_df['Release Date'].iloc[-1] - pd.Timedelta(20, unit='day'), 
+                    wtp_df['Release Date'].iloc[0] + pd.Timedelta(20, unit='day')]
+        ax.plot(negrange, [-1.0, -1.0], color='red', alpha=0.05)
+        ax.plot(negrange, [0, 0], color='red', alpha=0.05)
+        ax.fill_between(negrange, 0, -1.0, color='red', alpha=0.05)
+        
+        # Apply axis limits using the utility function
+        apply_axis_limits(ax, axis_controls, data_df=wtp_df, y_cols=['Ave'])
+        
+        # Chart aesthetics
+        ax.axhline(0, color='black', linestyle='-', alpha=0.3)
+        plt.title(f'European Average WTP & Range vs Marginal Cargo ({month})')
+        plt.ylabel('$/MMBtu')
+        plt.xlabel('Release Date')
+        plt.legend()
+        sns.despine(left=True, bottom=True)
+        
+        st.pyplot(fig)
     
     # Display summary statistics
     st.subheader("Analysis Summary")
