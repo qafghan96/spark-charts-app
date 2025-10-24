@@ -132,7 +132,7 @@ st.subheader("Data Configuration")
 
 col1, col2 = st.columns(2)
 with col1:
-    data_limit = st.slider("Number of releases", min_value=1, max_value=30, value=3, step=1)
+    data_limit = st.slider("Number of releases", min_value=1, max_value=20, value=3, step=1)
 with col2:
     use_extended_data = st.checkbox("Use extended historical data", value=False)
     if use_extended_data:
