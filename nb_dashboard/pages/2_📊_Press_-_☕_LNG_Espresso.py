@@ -43,14 +43,17 @@ import seaborn as sns
 import pandas as pd
 sns.set_theme(style="whitegrid")
 
-if st.button("Generate Chart", type="primary"):
-    fig, ax = plt.subplots(figsize=(15, 7))
-    ax.set_xlabel("Release Date")
-
 colors = {
     "Spark25S Pacific": "#4F41F4",
     "Spark30S Atlantic": "#48C38D",
 }
+
+# Initialize price_data
+price_data = {}
+
+if st.button("Generate Chart", type="primary"):
+    fig, ax = plt.subplots(figsize=(15, 7))
+    ax.set_xlabel("Release Date")
 
     # Store dataframes and latest prices
     price_data = {}
