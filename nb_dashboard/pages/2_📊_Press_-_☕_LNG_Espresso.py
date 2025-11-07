@@ -33,7 +33,7 @@ contracts = {
     "Spark30S Atlantic": "spark30s",
 }
 
-limit = st.slider("Number of releases", min_value=12, max_value=120, value=60, step=12)
+limit = st.slider("Number of releases", min_value=10, max_value=310, value=20, step=15)
 
 # Add axis controls
 axis_controls = add_axis_controls(expanded=True)
