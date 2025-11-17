@@ -19,6 +19,7 @@ from utils import (
     api_get,
     list_netbacks_reference,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 
@@ -355,6 +356,13 @@ if 'netbacks_df' in st.session_state:
             with col_y_max:
                 y_max_manual = st.number_input("Y-axis Max", value=1.0, step=0.1)
     
+    # Add color controls for freight hire percentages
+    if percentages_to_plot:
+        series_names = [f'Arb - {percent}% Freight Hire' for percent in percentages_to_plot]
+        # Use husl color palette as default (same as original)
+        default_colors = sns.color_palette("husl", len(percentages_to_plot)).as_hex()
+        color_controls = add_color_controls(series_names, default_colors, expanded=True)
+    
     if st.button("Generate Chart", type="secondary") and percentages_to_plot:
         # Filter data by date range
         if len(date_range) == 2:
@@ -380,8 +388,7 @@ if 'netbacks_df' in st.session_state:
         # Zero line
         ax.axhline(0, color='grey', linewidth=1, alpha=0.7)
         
-        # Color palette
-        colors = sns.color_palette("husl", len(percentages_to_plot))
+        # Line styles
         line_styles = ['-', '--', ':', '-.', '-']  # Different line styles
         
         # Get all y-values for selected percentages (needed for legend positioning and y-axis scaling)
@@ -398,10 +405,20 @@ if 'netbacks_df' in st.session_state:
             arb_column = f'Arb {percent}%'
             if arb_column in filtered_df.columns:
                 line_style = line_styles[i % len(line_styles)]
+                series_name = f'Arb - {percent}% Freight Hire'
+                
+                # Get selected color for this series
+                if series_name in color_controls:
+                    line_color = color_controls[series_name]
+                else:
+                    # Fallback to default color palette
+                    default_colors = sns.color_palette("husl", len(percentages_to_plot))
+                    line_color = default_colors[i]
+                
                 ax.plot(
                     filtered_df['Release Date'], 
                     filtered_df[arb_column],
-                    color=colors[i],
+                    color=line_color,
                     label=f'Arb - {percent}% Freight Hire Included',
                     linewidth=line_width,
                     linestyle=line_style

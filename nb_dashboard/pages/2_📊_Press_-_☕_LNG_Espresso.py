@@ -39,15 +39,15 @@ contracts = {
 
 limit = st.slider("Number of releases", min_value=10, max_value=310, value=20, step=15)
 
+# Add color controls for the two freight series
+series_names = ["Spark25S Pacific", "Spark30S Atlantic"]
+default_colors = ["#4F41F4", "#48C38D"]  # Blue and Green (current chart colors)
+color_controls = add_color_controls(series_names, default_colors, expanded=True)
+
 # Add axis controls
 axis_controls = add_axis_controls(expanded=True)
 
 sns.set_theme(style="whitegrid")
-
-colors = {
-    "Spark25S Pacific": "#4F41F4",
-    "Spark30S Atlantic": "#48C38D",
-}
 
 # Initialize price_data
 price_data = {}
@@ -64,8 +64,10 @@ if st.button("Generate Chart", type="primary"):
         df = build_price_df(token, ticker, limit=limit)
         if df.empty:
             continue
-        ax.plot(df["Release Date"], df["Spark"], color=colors.get(name, "#333"), linewidth=3.0, label=name)
-        ax.scatter(df["Release Date"].iloc[0], df["Spark"].iloc[0], color=colors.get(name, "#333"), s=120)
+        # Get selected color for this series
+        series_color = color_controls.get(name, "#333")
+        ax.plot(df["Release Date"], df["Spark"], color=series_color, linewidth=3.0, label=name)
+        ax.scatter(df["Release Date"].iloc[0], df["Spark"].iloc[0], color=series_color, s=120)
         
         # Store data for axis limits
         all_data.append(df)

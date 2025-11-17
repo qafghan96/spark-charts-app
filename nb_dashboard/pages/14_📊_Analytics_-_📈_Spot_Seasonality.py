@@ -217,6 +217,16 @@ if 'price_df' in st.session_state:
             index=0,
             help="This year will be highlighted with a bold line and min/max range"
         )
+        
+    # Add color controls for selected years
+    if selected_years:
+        year_series_names = [f"Year {year}" for year in selected_years[:5]]  # Limit to first 5 for UI
+        default_year_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+        year_color_controls = add_color_controls(
+            year_series_names, 
+            default_year_colors[:len(year_series_names)], 
+            expanded=True
+        )
     
     with col2:
         # Chart customization
@@ -295,22 +305,27 @@ if 'price_df' in st.session_state:
             if hdf.empty:
                 continue
                 
+            # Get color for this year
+            year_color = '#1f77b4'  # Default color
+            if f"Year {year}" in year_color_controls:
+                year_color = year_color_controls[f"Year {year}"]
+            
             if year == highlight_year:
                 # Highlight the selected year
                 ax.plot(hdf['Day of Year'], hdf['USDperday'], 
-                       color='#48C38D', linewidth=3.0, label=year)
+                       color=year_color, linewidth=3.0, label=year)
                 
                 if show_range:
                     ax.plot(hdf['Day of Year'], hdf['USDperdayMin'], 
-                           color='#48C38D', alpha=0.1)
+                           color=year_color, alpha=0.1)
                     ax.plot(hdf['Day of Year'], hdf['USDperdayMax'], 
-                           color='#48C38D', alpha=0.1)
+                           color=year_color, alpha=0.1)
                     ax.fill_between(hdf['Day of Year'], hdf['USDperdayMin'], 
-                                  hdf['USDperdayMax'], color='#48C38D', alpha=0.2)
+                                  hdf['USDperdayMax'], color=year_color, alpha=0.2)
             else:
                 # Other years with lower alpha
                 ax.plot(hdf['Day of Year'], hdf['USDperday'], 
-                       alpha=0.4, label=year, linewidth=1.5)
+                       color=year_color, alpha=0.4, label=year, linewidth=1.5)
         
         # Set title and labels
         month_range_text = f"{start_month} to {end_month}" if start_month != end_month else start_month

@@ -18,6 +18,7 @@ from utils import (
     get_access_token,
     api_get,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 

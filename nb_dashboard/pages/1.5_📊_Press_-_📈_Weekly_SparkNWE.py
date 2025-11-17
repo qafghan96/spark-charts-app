@@ -38,6 +38,11 @@ token = get_access_token(client_id, client_secret, scopes=scopes)
 # Configuration
 limit = st.slider("Number of releases", min_value=50, max_value=500, value=250, step=50)
 
+# Add color controls for SparkNWE series
+series_names = ["SparkNWE-F (Outright)"]
+default_colors = ["#4F41F4"]  # Blue (current chart color)
+color_controls = add_color_controls(series_names, default_colors, expanded=True)
+
 # Add axis controls
 axis_controls = add_axis_controls(expanded=True)
 
@@ -108,18 +113,21 @@ if st.button("Generate Chart", type="primary"):
         ax.set_xlabel('Release Date')
         
         # Plot SparkNWE outright with confidence bands
+        # Get selected color for SparkNWE-F (Outright)
+        outright_color = color_controls["SparkNWE-F (Outright)"]
+        
         ax.plot(sparkoutright['Release Date'], sparkoutright['Spark'], 
-                color='#4F41F4', linewidth=2.5, label='SparkNWE-F')
+                color=outright_color, linewidth=2.5, label='SparkNWE-F')
         ax.plot(sparkoutright['Release Date'], sparkoutright['SparkMin'], 
-                color='#4F41F4', alpha=0.1)
+                color=outright_color, alpha=0.1)
         ax.plot(sparkoutright['Release Date'], sparkoutright['SparkMax'], 
-                color='#4F41F4', alpha=0.1)
+                color=outright_color, alpha=0.1)
         ax.fill_between(sparkoutright['Release Date'], sparkoutright['SparkMin'], 
-                       sparkoutright['SparkMax'], alpha=0.2, color='#4F41F4')
+                       sparkoutright['SparkMax'], alpha=0.2, color=outright_color)
         
         # Add latest point marker
         ax.scatter(sparkoutright['Release Date'].iloc[0], sparkoutright['Spark'].iloc[0], 
-                  color='#4F41F4', marker='o', s=120)
+                  color=outright_color, marker='o', s=120)
         
         # Apply axis limits using the utility function
         all_data = [sparkoutright]

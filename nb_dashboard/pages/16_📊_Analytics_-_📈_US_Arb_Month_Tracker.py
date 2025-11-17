@@ -17,6 +17,7 @@ from utils import (
     get_credentials,
     get_access_token,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 
@@ -262,6 +263,19 @@ if st.button("Generate US Arb Month Tracker", type="primary"):
                 months_to_plot.append(month_str)
                 years_to_plot.append(year)
         
+        # Add color controls for the years
+        if years_to_plot:
+            year_series_names = [f"Year {year}" for year in years_to_plot]
+            default_colors = ['darkorange', 'darkblue', 'firebrick']
+            year_color_controls = add_color_controls(
+                year_series_names, 
+                default_colors[:len(year_series_names)], 
+                expanded=True
+            )
+        
+        # Add axis controls
+        axis_controls = add_axis_controls(expanded=True)
+        
         if len(months_to_plot) == 0:
             st.warning(f"No data available for month {target_month} across the years.")
         else:
@@ -283,13 +297,22 @@ if st.button("Generate US Arb Month Tracker", type="primary"):
                 
                 plt.axhline(0, color='grey')
                 
-                colors = ['darkorange', 'darkblue', 'firebrick']
                 linewidths = [1, 1.5, 2]
                 
                 for i, (month_str, monthly_df) in enumerate(year_dataframes):
                     year = month_str.split('-')[0]
+                    year_key = f"Year {year}"
+                    
+                    # Get selected color for this year
+                    if year_key in year_color_controls:
+                        line_color = year_color_controls[year_key]
+                    else:
+                        # Fallback to default colors if not in color controls
+                        default_colors = ['darkorange', 'darkblue', 'firebrick']
+                        line_color = default_colors[i % len(default_colors)]
+                    
                     ax.plot(monthly_df['Day of Year'], monthly_df['Delta Outrights'], 
-                           color=colors[i % len(colors)], 
+                           color=line_color, 
                            label=year, 
                            linewidth=linewidths[i % len(linewidths)])
                 

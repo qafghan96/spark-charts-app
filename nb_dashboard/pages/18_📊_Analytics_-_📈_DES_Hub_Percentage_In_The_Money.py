@@ -19,6 +19,7 @@ from utils import (
     get_credentials,
     get_access_token,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 
