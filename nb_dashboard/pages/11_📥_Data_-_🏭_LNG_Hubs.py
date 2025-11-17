@@ -37,7 +37,7 @@ data_type = st.radio(
 # Functions for fetching LNG Hubs data
 def fetch_live_hubs(access_token, format='csv'):
     """Fetch currently live/active LNG Hub posts"""
-    uri = "beta/lng/hubs/usgc/live/"
+    uri = "/beta/lng/hubs/usgc/live/"
     
     if format == 'csv':
         content = api_get(uri, access_token, format='csv')
@@ -47,7 +47,7 @@ def fetch_live_hubs(access_token, format='csv'):
 
 def fetch_historical_hubs(access_token, format='csv'):
     """Fetch historical/expired LNG Hub posts"""
-    uri = "beta/lng/hubs/usgc/historical/"
+    uri = "/beta/lng/hubs/usgc/historical/"
     
     if format == 'csv':
         content = api_get(uri, access_token, format='csv')
@@ -58,7 +58,7 @@ def fetch_historical_hubs(access_token, format='csv'):
 @st.cache_data
 def get_hub_metadata(access_token):
     """Get metadata including terminal codes"""
-    data = api_get("beta/lng/hubs/usgc/live/", access_token, format='json')
+    data = api_get("/beta/lng/hubs/usgc/live/", access_token, format='json')
     return data.get('metaData', {})
 
 if st.button("Fetch Data", type="primary"):
