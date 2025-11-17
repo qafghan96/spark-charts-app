@@ -11,13 +11,16 @@ except Exception:
     pio = None
 
 # ------- Chart Axis Controls -------
-def add_axis_controls(chart_type="matplotlib", expanded=False):
+def add_axis_controls(chart_type="matplotlib", expanded=False, data_df=None, x_col=None, y_cols=None):
     """
     Add axis limit controls to Streamlit sidebar or main area.
     
     Args:
         chart_type (str): Type of chart ('matplotlib', 'plotly', etc.)
         expanded (bool): Whether to show controls in an expanded section
+        data_df (pd.DataFrame, optional): DataFrame for calculating data-driven defaults
+        x_col (str, optional): Column name for x-axis data
+        y_cols (list, optional): List of column names for y-axis data
     
     Returns:
         dict: Dictionary containing axis limits and auto settings
@@ -32,13 +35,54 @@ def add_axis_controls(chart_type="matplotlib", expanded=False):
     """
     if expanded:
         with st.expander("📊 Chart Axis Controls", expanded=False):
-            return _create_axis_controls()
+            return _create_axis_controls(data_df, x_col, y_cols)
     else:
         st.subheader("📊 Chart Axis Controls")
-        return _create_axis_controls()
+        return _create_axis_controls(data_df, x_col, y_cols)
 
-def _create_axis_controls():
+def _create_axis_controls(data_df=None, x_col=None, y_cols=None):
     """Internal function to create axis control widgets."""
+    
+    # Calculate data-driven defaults - use sensible fallbacks instead of 0-100
+    default_x_min, default_x_max = -10.0, 10.0  # More sensible for price/date data
+    default_y_min, default_y_max = -5.0, 5.0    # Better for financial data
+    
+    if data_df is not None and not data_df.empty:
+        try:
+            # Calculate X-axis defaults
+            if x_col and x_col in data_df.columns:
+                x_data = data_df[x_col].dropna()
+                if len(x_data) > 0:
+                    if x_data.dtype.kind in 'iufc':  # numeric data
+                        x_range = x_data.max() - x_data.min()
+                        padding = x_range * 0.05
+                        default_x_min = float(x_data.min() - padding)
+                        default_x_max = float(x_data.max() + padding)
+                    else:
+                        # For non-numeric data (dates, etc.), use indices
+                        default_x_min = 0.0
+                        default_x_max = float(len(x_data) - 1)
+            
+            # Calculate Y-axis defaults
+            if y_cols:
+                all_y_values = []
+                for col in y_cols:
+                    if col in data_df.columns:
+                        y_data = data_df[col].dropna()
+                        if y_data.dtype.kind in 'iufc':  # numeric data
+                            all_y_values.extend(y_data.tolist())
+                
+                if all_y_values:
+                    y_min = min(all_y_values)
+                    y_max = max(all_y_values)
+                    y_range = y_max - y_min
+                    padding = y_range * 0.05 if y_range > 0 else 1.0
+                    default_y_min = float(y_min - padding)
+                    default_y_max = float(y_max + padding)
+        except Exception:
+            # Fall back to default values if calculation fails
+            pass
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -48,8 +92,8 @@ def _create_axis_controls():
         x_min = None
         x_max = None
         if not x_auto:
-            x_min = st.number_input("X-Axis Min", value=0.0, help="Minimum value for X-axis")
-            x_max = st.number_input("X-Axis Max", value=100.0, help="Maximum value for X-axis")
+            x_min = st.number_input("X-Axis Min", value=default_x_min, help="Minimum value for X-axis")
+            x_max = st.number_input("X-Axis Max", value=default_x_max, help="Maximum value for X-axis")
     
     with col2:
         st.write("**Y-Axis**")
@@ -58,8 +102,8 @@ def _create_axis_controls():
         y_min = None
         y_max = None
         if not y_auto:
-            y_min = st.number_input("Y-Axis Min", value=0.0, help="Minimum value for Y-axis")
-            y_max = st.number_input("Y-Axis Max", value=100.0, help="Maximum value for Y-axis")
+            y_min = st.number_input("Y-Axis Min", value=default_y_min, help="Minimum value for Y-axis")
+            y_max = st.number_input("Y-Axis Max", value=default_y_max, help="Maximum value for Y-axis")
     
     return {
         'x_auto': x_auto,

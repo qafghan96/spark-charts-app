@@ -191,8 +191,47 @@ with col2:
         help="End date for the chart display range"
     )
 
-# Add axis controls
-axis_controls = add_axis_controls(expanded=True)
+# Get a data sample for better axis defaults
+@st.cache_data
+def get_breakevens_data_sample(token, port, my_via, freight_ticker, tickers, available_df):
+    try:
+        ti = int(available_df[available_df["Ports"] == port]["Index"].iloc[0])
+        my_ticker = tickers[ti]
+        
+        # Fetch smaller sample of breakevens data
+        break_df_sample = fetch_breakevens(token, my_ticker, via=my_via, breakeven='freight', format='csv')
+        
+        # Find date column
+        date_column = None
+        for col in break_df_sample.columns:
+            if 'date' in col.lower() or 'release' in col.lower():
+                date_column = col
+                break
+        
+        if date_column:
+            break_df_sample['ReleaseDate'] = pd.to_datetime(break_df_sample[date_column])
+            # Get smaller sample of freight data
+            sample_length = min(20, len(break_df_sample['ReleaseDate'].unique()))
+            freight_df_sample = fetch_freight_prices(token, freight_ticker, sample_length, my_vessel='174-2stroke')
+            
+            # Filter and merge sample data
+            front_df_sample = break_df_sample[break_df_sample['LoadMonthIndex'] == "M+1"]
+            freight_df_sample['Release Date'] = pd.to_datetime(freight_df_sample['Release Date'])
+            merge_df_sample = pd.merge(freight_df_sample, front_df_sample, left_on='Release Date', right_on='ReleaseDate', how='inner')
+            
+            return merge_df_sample[['USDperday', 'FreightBreakeven']].head(50)  # Return sample for axis calculation
+        
+        return pd.DataFrame()
+    except:
+        return pd.DataFrame()
+
+# Get data sample for axis defaults
+data_sample = pd.DataFrame()
+if port and my_via and freight_ticker:
+    data_sample = get_breakevens_data_sample(token, port, my_via, freight_ticker, tickers, available_df)
+
+# Add axis controls with data-driven defaults
+axis_controls = add_axis_controls(expanded=True, data_df=data_sample, y_cols=['USDperday', 'FreightBreakeven'])
 
 if st.button("Generate Chart", type="primary"):
     with st.spinner("Fetching data..."):

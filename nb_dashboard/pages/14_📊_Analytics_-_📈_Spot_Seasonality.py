@@ -194,8 +194,8 @@ if 'price_df' in st.session_state:
     # Chart Configuration
     st.subheader("Seasonality Chart Configuration")
     
-    # Add axis controls
-    axis_controls = add_axis_controls(expanded=True)
+    # Add axis controls with data-driven defaults
+    axis_controls = add_axis_controls(expanded=True, data_df=price_df, y_cols=['USDperday'])
     
     col1, col2 = st.columns(2)
     

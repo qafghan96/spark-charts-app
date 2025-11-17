@@ -57,8 +57,21 @@ with col2:
     
 limit = st.slider("Historical Data Limit", min_value=100, max_value=1000, value=900, step=50)
 
-# Add axis controls
-axis_controls = add_axis_controls(expanded=True)
+# Get a data sample for better axis defaults
+@st.cache_data
+def get_ffa_data_sample(token, contract, limit_sample=50):
+    try:
+        return build_price_df(token, contract, limit=limit_sample)
+    except:
+        return pd.DataFrame()
+
+# Get data sample for axis defaults if contract is selected
+data_sample = pd.DataFrame()
+if selected_contract:
+    data_sample = get_ffa_data_sample(token, selected_contract, limit_sample=50)
+
+# Add axis controls with data-driven defaults
+axis_controls = add_axis_controls(expanded=True, data_df=data_sample, y_cols=['Spark'])
 
 if st.button("Generate Seasonality Chart", type="primary") and selected_contract:
     with st.spinner(f"Fetching {selected_contract} data..."):

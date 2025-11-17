@@ -61,8 +61,31 @@ if include_c:
 num_releases = st.slider("Number of releases", min_value=10, max_value=90, value=30, step=5)
 my_releases = release_dates[:num_releases]
 
-# Add axis controls
-axis_controls = add_axis_controls(expanded=True)
+# Get a data sample for better axis defaults
+@st.cache_data
+def get_data_sample(port_a, port_b, port_c, via_a, via_b, via_c, include_c, my_releases, token):
+    uuid_a, _ = port_options[port_a]
+    uuid_b, _ = port_options[port_b]
+    
+    sample_releases = my_releases[:5]  # Use first 5 releases for sample
+    sample_data_a = netbacks_history(token, uuid_a, port_a, sample_releases, via=via_a)
+    sample_data_b = netbacks_history(token, uuid_b, port_b, sample_releases, via=via_b)
+    sample_data_c = pd.DataFrame()
+    
+    if include_c:
+        uuid_c, _ = port_options[port_c]
+        sample_data_c = netbacks_history(token, uuid_c, port_c, sample_releases, via=via_c)
+    
+    return pd.concat([df for df in [sample_data_a, sample_data_b, sample_data_c] if not df.empty], ignore_index=True)
+
+# Get data sample for axis defaults
+try:
+    data_sample = get_data_sample(port_a, port_b, port_c if include_c else "", via_a, via_b, via_c if include_c else "", include_c, my_releases, token)
+except:
+    data_sample = pd.DataFrame()
+
+# Add axis controls with data-driven defaults
+axis_controls = add_axis_controls(expanded=True, data_df=data_sample, x_col='Release Date', y_cols=['Delta Outrights'])
 
 import matplotlib.pyplot as plt
 import seaborn as sns
