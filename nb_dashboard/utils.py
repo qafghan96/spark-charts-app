@@ -114,6 +114,112 @@ def _create_axis_controls(data_df=None, x_col=None, y_cols=None):
         'y_max': y_max
     }
 
+def add_color_controls(series_names, default_colors=None, expanded=False):
+    """
+    Add color selection controls for chart series.
+    
+    Args:
+        series_names (list): List of series names to add color controls for
+        default_colors (list, optional): List of default hex colors for each series
+        expanded (bool): Whether to show controls in an expanded section
+    
+    Returns:
+        dict: Dictionary mapping series names to selected colors
+    """
+    # Standard color palette with common chart colors
+    color_palette = {
+        'Gold': '#FFC217',
+        'Blue': '#4F41F4', 
+        'Green': '#48C38D',
+        'Red': '#FF4B4B',
+        'Orange': '#FF8C00',
+        'Purple': '#8B5CF6',
+        'Pink': '#F472B6',
+        'Teal': '#14B8A6',
+        'Indigo': '#6366F1',
+        'Lime': '#84CC16',
+        'Rose': '#F43F5E',
+        'Cyan': '#06B6D4',
+        'Amber': '#F59E0B',
+        'Emerald': '#10B981',
+        'Violet': '#8B5CF6',
+        'Sky': '#0EA5E9'
+    }
+    
+    # If no default colors provided, use the standard sequence
+    if default_colors is None:
+        default_sequence = ['#FFC217', '#4F41F4', '#48C38D', '#FF4B4B', '#FF8C00']
+        default_colors = [default_sequence[i % len(default_sequence)] for i in range(len(series_names))]
+    
+    # Find default color names (or use hex if not in palette)
+    default_names = []
+    for color in default_colors:
+        color_name = None
+        for name, hex_val in color_palette.items():
+            if hex_val.lower() == color.lower():
+                color_name = name
+                break
+        default_names.append(color_name if color_name else color)
+    
+    if expanded:
+        with st.expander("🎨 Chart Color Controls", expanded=False):
+            return _create_color_controls(series_names, color_palette, default_names, default_colors)
+    else:
+        st.subheader("🎨 Chart Color Controls")
+        return _create_color_controls(series_names, color_palette, default_names, default_colors)
+
+def _create_color_controls(series_names, color_palette, default_names, default_colors):
+    """Internal function to create color control widgets."""
+    selected_colors = {}
+    
+    st.write("**Select colors for each data series:**")
+    
+    # Create columns for color controls
+    num_series = len(series_names)
+    if num_series <= 3:
+        cols = st.columns(num_series)
+    else:
+        cols = st.columns(3)
+    
+    for i, series_name in enumerate(series_names):
+        col_idx = i % len(cols)
+        with cols[col_idx]:
+            # Create selectbox for color choice
+            color_options = list(color_palette.keys()) + ['Custom']
+            default_idx = 0
+            
+            # Find index of default color
+            if i < len(default_names) and default_names[i] in color_options:
+                default_idx = color_options.index(default_names[i])
+            
+            selected_color_name = st.selectbox(
+                f"{series_name}",
+                options=color_options,
+                index=default_idx,
+                key=f"color_{series_name}_{i}"
+            )
+            
+            if selected_color_name == 'Custom':
+                # Show color picker for custom color
+                default_hex = default_colors[i] if i < len(default_colors) else '#FFC217'
+                selected_colors[series_name] = st.color_picker(
+                    f"Custom color for {series_name}",
+                    value=default_hex,
+                    key=f"custom_color_{series_name}_{i}"
+                )
+            else:
+                # Use predefined color
+                selected_colors[series_name] = color_palette[selected_color_name]
+            
+            # Show color preview
+            st.markdown(
+                f'<div style="width: 100%; height: 20px; background-color: {selected_colors[series_name]}; '
+                f'border: 1px solid #ccc; border-radius: 4px; margin-top: 5px;"></div>',
+                unsafe_allow_html=True
+            )
+    
+    return selected_colors
+
 def apply_axis_limits(ax, axis_controls, data_df=None, x_col=None, y_cols=None):
     """
     Apply axis limits to matplotlib axes based on user controls.

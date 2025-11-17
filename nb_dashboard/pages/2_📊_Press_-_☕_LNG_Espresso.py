@@ -13,6 +13,7 @@ from utils import (
     get_access_token,
     build_price_df,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 

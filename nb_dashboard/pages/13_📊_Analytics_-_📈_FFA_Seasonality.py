@@ -18,6 +18,7 @@ from utils import (
     list_contracts,
     build_price_df,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 
@@ -107,6 +108,18 @@ if st.button("Generate Seasonality Chart", type="primary") and selected_contract
             groups = df.groupby('Calendar Month')
             years = sorted(df['Release Date'].dt.year.unique())
             
+            # Add color controls for recent years (last 5 years)
+            recent_years = years[-5:] if len(years) >= 5 else years
+            year_series_names = [f"{selected_month}{year}" for year in recent_years]
+            
+            # Create default color palette for years
+            default_year_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+            year_color_controls = add_color_controls(
+                year_series_names, 
+                default_year_colors[:len(year_series_names)], 
+                expanded=True
+            )
+            
             # Create the seasonality plot
             sns.set_style("whitegrid")
             fig, ax = plt.subplots(figsize=(14, 7))
@@ -121,9 +134,18 @@ if st.button("Generate Seasonality Chart", type="primary") and selected_contract
                     year_df = groups.get_group(month_year).copy()
                     year_df = sort_years(year_df)
                     
+                    # Use custom color for recent years, default colormap for older years
+                    series_name = f"{selected_month}{year}"
+                    if series_name in year_color_controls:
+                        line_color = year_color_controls[series_name]
+                        linewidth = 2.5  # Slightly thicker for selected years
+                    else:
+                        line_color = colors[i % len(colors)]
+                        linewidth = 1.5  # Thinner for older years
+                    
                     ax.plot(year_df["Day of Year"], year_df["Spark"], 
-                           label=f"{selected_month}{year}", 
-                           color=colors[i % len(colors)], linewidth=2)
+                           label=series_name, 
+                           color=line_color, linewidth=linewidth)
                     max_dates.append(year_df["Day of Year"].max())
 
             # Customize the plot

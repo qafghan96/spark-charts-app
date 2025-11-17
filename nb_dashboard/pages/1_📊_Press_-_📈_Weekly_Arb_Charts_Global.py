@@ -14,6 +14,7 @@ from utils import (
     list_netbacks_reference,
     netbacks_history,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 
@@ -84,6 +85,17 @@ try:
 except:
     data_sample = pd.DataFrame()
 
+# Prepare series names for color controls
+series_names = [f"{port_a} ({via_a})", f"{port_b} ({via_b})"]
+if include_c:
+    series_names.append(f"{port_c} ({via_c})")
+
+# Set up default colors (current chart colors)
+default_colors = ['#FFC217', '#4F41F4', '#48C38D']  # Gold, Blue, Green
+
+# Add color controls
+color_controls = add_color_controls(series_names, default_colors[:len(series_names)], expanded=True)
+
 # Add axis controls with data-driven defaults
 axis_controls = add_axis_controls(expanded=True, data_df=data_sample, x_col='Release Date', y_cols=['Delta Outrights'])
 
@@ -113,8 +125,9 @@ if st.button("Generate Chart", type="primary"):
         port_prices = []
         
         if not df_a.empty:
-            ax.plot(df_a['Release Date'], df_a['Delta Outrights'], color='#FFC217', label=f"{port_a} ({via_a})", linewidth=3.0)
-            ax.scatter(df_a['Release Date'].iloc[0], df_a['Delta Outrights'].iloc[0], color='#FFC217', s=120)
+            color_a = color_controls[f"{port_a} ({via_a})"]
+            ax.plot(df_a['Release Date'], df_a['Delta Outrights'], color=color_a, label=f"{port_a} ({via_a})", linewidth=3.0)
+            ax.scatter(df_a['Release Date'].iloc[0], df_a['Delta Outrights'].iloc[0], color=color_a, s=120)
             port_prices.append({
                 "port": f"{port_a} ({via_a})",
                 "price": df_a['Delta Outrights'].iloc[0],
@@ -123,8 +136,9 @@ if st.button("Generate Chart", type="primary"):
             })
         
         if not df_b.empty:
-            ax.plot(df_b['Release Date'], df_b['Delta Outrights'], color='#4F41F4', label=f"{port_b} ({via_b})", linewidth=3.0)
-            ax.scatter(df_b['Release Date'].iloc[0], df_b['Delta Outrights'].iloc[0], color='#4F41F4', s=120)
+            color_b = color_controls[f"{port_b} ({via_b})"]
+            ax.plot(df_b['Release Date'], df_b['Delta Outrights'], color=color_b, label=f"{port_b} ({via_b})", linewidth=3.0)
+            ax.scatter(df_b['Release Date'].iloc[0], df_b['Delta Outrights'].iloc[0], color=color_b, s=120)
             port_prices.append({
                 "port": f"{port_b} ({via_b})",
                 "price": df_b['Delta Outrights'].iloc[0],
@@ -133,8 +147,9 @@ if st.button("Generate Chart", type="primary"):
             })
         
         if include_c and df_c is not None and not df_c.empty:
-            ax.plot(df_c['Release Date'], df_c['Delta Outrights'], color='#48C38D', label=f"{port_c} ({via_c})", linewidth=3.0)
-            ax.scatter(df_c['Release Date'].iloc[0], df_c['Delta Outrights'].iloc[0], color='#48C38D', s=120)
+            color_c = color_controls[f"{port_c} ({via_c})"]
+            ax.plot(df_c['Release Date'], df_c['Delta Outrights'], color=color_c, label=f"{port_c} ({via_c})", linewidth=3.0)
+            ax.scatter(df_c['Release Date'].iloc[0], df_c['Delta Outrights'].iloc[0], color=color_c, s=120)
             port_prices.append({
                 "port": f"{port_c} ({via_c})",
                 "price": df_c['Delta Outrights'].iloc[0],

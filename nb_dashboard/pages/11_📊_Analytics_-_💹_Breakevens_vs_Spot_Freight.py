@@ -19,6 +19,7 @@ from utils import (
     get_access_token,
     api_get,
     add_axis_controls,
+    add_color_controls,
     apply_axis_limits,
 )
 
@@ -230,6 +231,11 @@ data_sample = pd.DataFrame()
 if port and my_via and freight_ticker:
     data_sample = get_breakevens_data_sample(token, port, my_via, freight_ticker, tickers, available_df)
 
+# Add color controls for the two data series
+series_names = [f'{freight_ticker.upper()} (Atlantic)', 'US Arb [M+1] Freight Breakeven Level']
+default_colors = ['#48C38D', '#4F41F4']  # Green and Blue (current chart colors)
+color_controls = add_color_controls(series_names, default_colors, expanded=True)
+
 # Add axis controls with data-driven defaults
 axis_controls = add_axis_controls(expanded=True, data_df=data_sample, y_cols=['USDperday', 'FreightBreakeven'])
 
@@ -277,10 +283,14 @@ if st.button("Generate Chart", type="primary"):
     sns.set_style("whitegrid")
     fig2, ax2 = plt.subplots(figsize=(15, 7))
 
+    # Get selected colors for the plot
+    freight_color = color_controls[f'{freight_ticker.upper()} (Atlantic)']
+    breakeven_color = color_controls['US Arb [M+1] Freight Breakeven Level']
+    
     ax2.plot(merge_df['Release Date'], merge_df['USDperday'], 
-             color='#48C38D', linewidth=2.5, label=f'{freight_ticker.upper()} (Atlantic)')
+             color=freight_color, linewidth=2.5, label=f'{freight_ticker.upper()} (Atlantic)')
     ax2.plot(merge_df['Release Date'], merge_df['FreightBreakeven'], 
-             color='#4F41F4', linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
+             color=breakeven_color, linewidth=2, label='US Arb [M+1] Freight Breakeven Level')
 
     ax2.fill_between(merge_df['Release Date'], merge_df['USDperday'], merge_df['FreightBreakeven'],
                      where=merge_df['USDperday'] > merge_df['FreightBreakeven'], 
