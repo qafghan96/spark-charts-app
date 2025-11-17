@@ -18,6 +18,10 @@ from utils import (
     apply_axis_limits,
 )
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
 st.title("Press - Weekly Arb Charts - Global")
 
 st.caption("Replicates Weekly Arb Charts Global using netbacks reference and history APIs.")
@@ -99,10 +103,7 @@ color_controls = add_color_controls(series_names, default_colors[:len(series_nam
 # Add axis controls with data-driven defaults
 axis_controls = add_axis_controls(expanded=True, data_df=data_sample, x_col='Release Date', y_cols=['Delta Outrights'])
 
-import matplotlib.pyplot as plt
-import seaborn as sns
 sns.set_theme(style="whitegrid")
-import pandas as pd
 
 if st.button("Generate Chart", type="primary"):
     fig, ax = plt.subplots(figsize=(12, 6))

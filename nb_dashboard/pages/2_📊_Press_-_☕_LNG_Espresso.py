@@ -1,6 +1,9 @@
 import os
 import sys
 import streamlit as st
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 
 # Ensure we can import sibling module "utils.py" when run as a Streamlit page
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,9 +42,6 @@ limit = st.slider("Number of releases", min_value=10, max_value=310, value=20, s
 # Add axis controls
 axis_controls = add_axis_controls(expanded=True)
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
 sns.set_theme(style="whitegrid")
 
 colors = {
