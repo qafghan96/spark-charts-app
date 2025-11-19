@@ -8,14 +8,22 @@ APP_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if APP_ROOT not in sys.path:
     sys.path.insert(0, APP_ROOT)
 
+# Import utils functions
+import utils
 from utils import (
     get_credentials,
     get_access_token,
     fetch_price_releases,
     add_axis_controls,
-    add_color_controls,
     apply_axis_limits,
 )
+
+# Explicitly import add_color_controls
+try:
+    from utils import add_color_controls
+except ImportError:
+    # Fallback: access directly from utils module
+    add_color_controls = utils.add_color_controls
 
 import matplotlib.pyplot as plt
 import seaborn as sns
