@@ -192,14 +192,14 @@ with col2:
         help="End date for the chart display range"
     )
 
-# Get a data sample for better axis defaults
+# Get a filtered data sample for better axis defaults based on user's date range
 @st.cache_data
-def get_breakevens_data_sample(token, port, my_via, freight_ticker, tickers, available_df):
+def get_filtered_data_sample(token, port, my_via, freight_ticker, tickers, available_df, start_date, end_date):
     try:
         ti = int(available_df[available_df["Ports"] == port]["Index"].iloc[0])
         my_ticker = tickers[ti]
         
-        # Fetch smaller sample of breakevens data
+        # Fetch breakevens data
         break_df_sample = fetch_breakevens(token, my_ticker, via=my_via, breakeven='freight', format='csv')
         
         # Find date column
@@ -211,25 +211,34 @@ def get_breakevens_data_sample(token, port, my_via, freight_ticker, tickers, ava
         
         if date_column:
             break_df_sample['ReleaseDate'] = pd.to_datetime(break_df_sample[date_column])
-            # Get smaller sample of freight data
-            sample_length = min(20, len(break_df_sample['ReleaseDate'].unique()))
+            
+            # Get freight data with sufficient length
+            sample_length = len(break_df_sample['ReleaseDate'].unique())
             freight_df_sample = fetch_freight_prices(token, freight_ticker, sample_length, my_vessel='174-2stroke')
             
-            # Filter and merge sample data
+            # Filter and merge data
             front_df_sample = break_df_sample[break_df_sample['LoadMonthIndex'] == "M+1"]
             freight_df_sample['Release Date'] = pd.to_datetime(freight_df_sample['Release Date'])
             merge_df_sample = pd.merge(freight_df_sample, front_df_sample, left_on='Release Date', right_on='ReleaseDate', how='inner')
             
-            return merge_df_sample[['USDperday', 'FreightBreakeven']].head(50)  # Return sample for axis calculation
+            # Filter by user's date range
+            start_datetime = pd.to_datetime(start_date)
+            end_datetime = pd.to_datetime(end_date)
+            date_filtered_df = merge_df_sample[
+                (merge_df_sample['Release Date'] >= start_datetime) & 
+                (merge_df_sample['Release Date'] <= end_datetime)
+            ]
+            
+            return date_filtered_df[['USDperday', 'FreightBreakeven']] if not date_filtered_df.empty else pd.DataFrame()
         
         return pd.DataFrame()
     except:
         return pd.DataFrame()
 
-# Get data sample for axis defaults
+# Get filtered data sample for axis defaults based on user's selected date range
 data_sample = pd.DataFrame()
 if port and my_via and freight_ticker:
-    data_sample = get_breakevens_data_sample(token, port, my_via, freight_ticker, tickers, available_df)
+    data_sample = get_filtered_data_sample(token, port, my_via, freight_ticker, tickers, available_df, start_date, end_date)
 
 # Add color controls for the two data series
 series_names = [f'{freight_ticker.upper()} (Atlantic)', 'US Arb [M+1] Freight Breakeven Level']
