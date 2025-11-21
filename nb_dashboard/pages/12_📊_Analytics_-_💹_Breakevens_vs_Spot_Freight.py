@@ -321,8 +321,14 @@ if st.button("Generate Chart", type="primary"):
         # Use date range for X-axis
         ax2.set_xlim(start_datetime, end_datetime)
     
-    # Apply Y-axis limits using the utility function
-    apply_axis_limits(ax2, axis_controls, data_df=merge_df, y_cols=['USDperday', 'FreightBreakeven'])
+    # Filter the data by the selected date range for proper Y-axis auto-scaling
+    date_filtered_merge_df = merge_df[
+        (merge_df['Release Date'] >= start_datetime) & 
+        (merge_df['Release Date'] <= end_datetime)
+    ]
+    
+    # Apply Y-axis limits using the date-filtered data for auto-scaling
+    apply_axis_limits(ax2, axis_controls, data_df=date_filtered_merge_df, y_cols=['USDperday', 'FreightBreakeven'])
 
     plt.title(f'{freight_ticker.upper()} (Atlantic) vs. US Arb [M+1] Freight Breakeven Level')
     sns.despine(left=True, bottom=True)
