@@ -45,7 +45,7 @@ scopes = "read:lng-freight-prices,read:routes"
 token = get_access_token(client_id, client_secret, scopes=scopes)
 
 # Configuration
-limit = st.slider("Number of releases", min_value=50, max_value=500, value=250, step=50)
+limit = st.slider("Number of releases", min_value=50, max_value=1000, value=250, step=50)
 
 # Add color controls for SparkNWE series
 series_names = ["SparkNWE-F (Outright)"]
