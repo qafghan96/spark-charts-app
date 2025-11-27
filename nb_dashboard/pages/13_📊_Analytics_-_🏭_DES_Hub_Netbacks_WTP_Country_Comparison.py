@@ -299,6 +299,9 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
             )
         
         with col2:
+            # Legend control
+            show_legend = st.checkbox("Show Legend", value=True, help="Toggle chart legend on/off")
+            
             # Date range controls
             st.write("**Chart Date Range**")
             col_start, col_end = st.columns(2)
@@ -372,7 +375,8 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
                                color='red', alpha=0.05)
             
             plt.title(f'Terminal WTP - {stored_month}')
-            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            if show_legend:
+                plt.legend(loc='upper right', framealpha=0.9)
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
             sns.despine(left=True, bottom=True)
@@ -400,6 +404,9 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
             )
         
         with col2:
+            # Legend control
+            show_legend_country = st.checkbox("Show Legend", value=True, help="Toggle chart legend on/off", key="country_legend")
+            
             # Date range controls
             st.write("**Chart Date Range**")
             col_start, col_end = st.columns(2)
@@ -504,7 +511,8 @@ if 'wtp_df' in st.session_state and 'countries_df' in st.session_state:
                                color='red', alpha=0.05)
             
             plt.title(f'Country Average WTP & Range - {stored_month}')
-            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+            if show_legend_country:
+                plt.legend(loc='upper right', framealpha=0.9)
             plt.grid(True, alpha=0.3)
             plt.tight_layout()
             sns.despine(left=True, bottom=True)

@@ -124,6 +124,160 @@ if st.button("Fetch Data", type="primary"):
                 st.subheader(f"📋 {data_title}")
                 st.dataframe(df, use_container_width=True, height=400)
                 
+                # Detailed Statistics Section
+                st.subheader("📊 Detailed Field Statistics")
+                
+                # Helper function to create statistics for categorical fields
+                def create_field_stats(df, field_name, max_display=10):
+                    """Create statistics for a categorical field"""
+                    if field_name not in df.columns:
+                        return None
+                    
+                    # Handle special cases for fields that might contain multiple values
+                    if field_name == 'TerminalCodes':
+                        # Split comma-separated values and count individual terminals
+                        all_terminals = []
+                        for terminals_str in df[field_name].dropna():
+                            if pd.notna(terminals_str) and str(terminals_str).strip():
+                                terminals = [t.strip() for t in str(terminals_str).split(',')]
+                                all_terminals.extend(terminals)
+                        
+                        if all_terminals:
+                            terminal_counts = pd.Series(all_terminals).value_counts()
+                            stats_df = pd.DataFrame({
+                                'Value': terminal_counts.index[:max_display],
+                                'Count': terminal_counts.values[:max_display],
+                                'Percentage': (terminal_counts.values[:max_display] / len(all_terminals) * 100).round(2)
+                            })
+                            return stats_df, len(all_terminals), len(terminal_counts)
+                        return None
+                    
+                    # Standard categorical field handling
+                    value_counts = df[field_name].value_counts()
+                    if len(value_counts) == 0:
+                        return None
+                    
+                    stats_df = pd.DataFrame({
+                        'Value': value_counts.index[:max_display],
+                        'Count': value_counts.values[:max_display],
+                        'Percentage': (value_counts.values[:max_display] / len(df) * 100).round(2)
+                    })
+                    
+                    return stats_df, len(df), len(value_counts)
+                
+                # Helper function to create statistics for numeric fields
+                def create_numeric_stats(df, field_name):
+                    """Create statistics for numeric fields"""
+                    if field_name not in df.columns:
+                        return None
+                    
+                    numeric_data = pd.to_numeric(df[field_name], errors='coerce').dropna()
+                    if len(numeric_data) == 0:
+                        return None
+                    
+                    stats = {
+                        'Count': len(numeric_data),
+                        'Mean': numeric_data.mean().round(2),
+                        'Median': numeric_data.median().round(2),
+                        'Std Dev': numeric_data.std().round(2),
+                        'Min': numeric_data.min(),
+                        'Max': numeric_data.max(),
+                        'Q25': numeric_data.quantile(0.25).round(2),
+                        'Q75': numeric_data.quantile(0.75).round(2)
+                    }
+                    
+                    return pd.DataFrame([stats])
+                
+                # Identify categorical and numeric fields
+                categorical_fields = []
+                numeric_fields = []
+                datetime_fields = []
+                
+                for col in df.columns:
+                    # Skip ID fields and very long text fields
+                    if col.lower() in ['id', 'uuid'] or df[col].astype(str).str.len().max() > 100:
+                        continue
+                    
+                    # Check for datetime fields
+                    if 'utc' in col.lower() or 'date' in col.lower() or 'time' in col.lower():
+                        datetime_fields.append(col)
+                    # Check for numeric fields
+                    elif pd.api.types.is_numeric_dtype(df[col]) or df[col].astype(str).str.replace('.', '').str.isdigit().any():
+                        numeric_data = pd.to_numeric(df[col], errors='coerce')
+                        if not numeric_data.isna().all():
+                            numeric_fields.append(col)
+                    else:
+                        categorical_fields.append(col)
+                
+                # Display categorical field statistics
+                if categorical_fields:
+                    st.write("**📋 Categorical Fields Statistics:**")
+                    
+                    # Create tabs for different categorical fields
+                    tabs = st.tabs([f"{field}" for field in categorical_fields[:5]])  # Limit to 5 tabs
+                    
+                    for i, field in enumerate(categorical_fields[:5]):
+                        with tabs[i]:
+                            result = create_field_stats(df, field)
+                            if result:
+                                stats_df, total_records, unique_values = result
+                                
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Total Records", total_records)
+                                with col2:
+                                    st.metric("Unique Values", unique_values)
+                                with col3:
+                                    if len(stats_df) < unique_values:
+                                        st.metric("Showing Top", len(stats_df))
+                                
+                                st.dataframe(stats_df, use_container_width=True, hide_index=True)
+                                
+                                # Show additional fields if there are more than 5
+                                if i == 4 and len(categorical_fields) > 5:
+                                    with st.expander(f"📊 Additional Categorical Fields ({len(categorical_fields) - 5} more)", expanded=False):
+                                        for extra_field in categorical_fields[5:]:
+                                            st.write(f"**{extra_field}:**")
+                                            result = create_field_stats(df, extra_field, max_display=5)
+                                            if result:
+                                                stats_df, total_records, unique_values = result
+                                                st.write(f"Unique values: {unique_values} | Total records: {total_records}")
+                                                st.dataframe(stats_df, use_container_width=True, hide_index=True)
+                            else:
+                                st.info(f"No valid data found for {field}")
+                
+                # Display numeric field statistics
+                if numeric_fields:
+                    st.write("**🔢 Numeric Fields Statistics:**")
+                    for field in numeric_fields:
+                        with st.expander(f"📊 {field}", expanded=False):
+                            result = create_numeric_stats(df, field)
+                            if result:
+                                st.dataframe(result, use_container_width=True, hide_index=True)
+                            else:
+                                st.info(f"No valid numeric data found for {field}")
+                
+                # Display datetime field information
+                if datetime_fields:
+                    st.write("**📅 DateTime Fields Information:**")
+                    for field in datetime_fields:
+                        with st.expander(f"📊 {field}", expanded=False):
+                            try:
+                                datetime_data = pd.to_datetime(df[field], errors='coerce').dropna()
+                                if len(datetime_data) > 0:
+                                    stats = {
+                                        'Count': len(datetime_data),
+                                        'Earliest': datetime_data.min(),
+                                        'Latest': datetime_data.max(),
+                                        'Range (Days)': (datetime_data.max() - datetime_data.min()).days
+                                    }
+                                    stats_df = pd.DataFrame([stats])
+                                    st.dataframe(stats_df, use_container_width=True, hide_index=True)
+                                else:
+                                    st.info(f"No valid datetime data found for {field}")
+                            except Exception as e:
+                                st.warning(f"Could not analyze datetime field {field}: {e}")
+                
                 # Download functionality
                 @st.cache_data
                 def convert_df_to_csv(dataframe):
