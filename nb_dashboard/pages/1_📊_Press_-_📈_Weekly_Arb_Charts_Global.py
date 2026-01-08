@@ -63,7 +63,7 @@ if include_c:
             key="via_c",
         )
 
-num_releases = st.slider("Number of releases", min_value=10, max_value=90, value=30, step=5)
+num_releases = st.slider("Number of releases", min_value=10, max_value=200, value=30, step=5)
 my_releases = release_dates[:num_releases]
 
 # Get a data sample for better axis defaults
