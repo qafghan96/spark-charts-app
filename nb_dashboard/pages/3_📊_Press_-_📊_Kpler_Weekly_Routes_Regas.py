@@ -2,6 +2,7 @@ import os
 import sys
 import pandas as pd
 import streamlit as st
+from io import StringIO
 
 # Ensure we can import sibling module "utils.py"
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,50 +23,50 @@ st.caption("Replicates df2 from Kpler_weekly_routesregas_data.ipynb: first datap
 
 # --- Functions adapted from the notebook ---
 
-def fetch_price_releases_access(access_token: str, limit: int = 8, offset: int | None = None) -> list[dict]:
-    query = f"?limit={limit}"
-    if offset is not None:
-        query += f"&offset={offset}"
-    content = api_get(f"/beta/sparkr/releases/{query}", access_token)
-    return content.get("data", [])
+def fetch_regas_reference_data(access_token: str) -> pd.DataFrame:
+    """Fetch terminal reference data to get UUIDs."""
+    content = api_get("/v1.0/lng/access/regas-costs/reference-data/", access_token, format='csv')
+    if len(content) == 0:
+        return pd.DataFrame(columns=['TerminalUUID', 'TerminalName'])
+    data = content.decode('utf-8')
+    return pd.read_csv(StringIO(data))
 
 
-def organise_access_dataframe(latest: list[dict]) -> pd.DataFrame:
-    data_dict: dict[str, list] = {
-        "Release Date": [],
-        "Terminal": [],
-        "Month": [],
-        "Vessel Size": [],
-        "Total $/MMBtu": [],
-        "Basic Slot (Berth)": [],
-        "Basic Slot (Unload/Stor/Regas)": [],
-        "Basic Slot (B/U/S/R)": [],
-        "Additional Storage": [],
-        "Additional Sendout": [],
-    }
-    if not latest:
-        return pd.DataFrame(data_dict)
-    sizes_available = list(latest[0].get("perVesselSize", {}).keys())
-    for item in latest:
-        for s in sizes_available:
-            delivery_months = item.get("perVesselSize", {}).get(s, {}).get("deliveryMonths", [])
-            for month in delivery_months:
-                data_dict["Release Date"].append(item.get("releaseDate"))
-                data_dict["Terminal"].append(item.get("terminalName"))
-                data_dict["Month"].append(month.get("month"))
-                data_dict["Vessel Size"].append(s)
-                costs_mmbtu = month.get("costsInUsdPerMmbtu", {})
-                data_dict["Total $/MMBtu"].append(float(costs_mmbtu.get("total", 0)))
-                breakdown = costs_mmbtu.get("breakdown", {})
-                data_dict["Basic Slot (Berth)"].append(float(breakdown.get("basic-slot-berth", {}).get("value", 0)))
-                data_dict["Basic Slot (Unload/Stor/Regas)"].append(float(breakdown.get("basic-slot-unload-storage-regas", {}).get("value", 0)))
-                data_dict["Basic Slot (B/U/S/R)"].append(float(breakdown.get("basic-slot-berth-unload-storage-regas", {}).get("value", 0)))
-                data_dict["Additional Storage"].append(float(breakdown.get("additional-storage", {}).get("value", 0)))
-                data_dict["Additional Sendout"].append(float(breakdown.get("additional-send-out", {}).get("value", 0)))
-    df = pd.DataFrame(data_dict)
+def fetch_historical_regas_costs(access_token: str, vessel_size: str = '174000',
+                                   unit: str = 'usd-per-mmbtu',
+                                   start: str | None = None,
+                                   end: str | None = None,
+                                   terminal_uuid: str | None = None) -> pd.DataFrame:
+    """Fetch historical regas costs using the new v1.0 endpoint."""
+    query_params = f"?vessel-size={vessel_size}&unit={unit}"
+
+    if start is not None:
+        query_params += f"&start={start}"
+    if end is not None:
+        query_params += f"&end={end}"
+    if terminal_uuid is not None:
+        query_params += f"&terminal-uuid={terminal_uuid}"
+
+    uri = f"/v1.0/lng/access/regas-costs/{query_params}"
+    content = api_get(uri, access_token, format='csv')
+
+    if len(content) == 0:
+        return pd.DataFrame()
+
+    data = content.decode('utf-8')
+    df = pd.read_csv(StringIO(data))
+
+    # Convert date columns
     if not df.empty:
-        df["Month"] = pd.to_datetime(df["Month"])  # type: ignore
-        df["Release Date"] = pd.to_datetime(df["Release Date"])  # type: ignore
+        df['ReleaseDate'] = pd.to_datetime(df['ReleaseDate'], errors='coerce')
+        df['DeliveryMonth'] = pd.to_datetime(df['DeliveryMonth'], errors='coerce')
+
+        # Convert numeric columns
+        for col in df.columns:
+            if col not in ['ReleaseDate', 'DeliveryMonth', 'DeliveryMonthName',
+                          'DeliveryMonthIndex', 'TerminalUUID', 'TerminalName']:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
     return df
 
 
@@ -189,32 +190,58 @@ if route_id is None:
     st.warning("No routes available.")
     st.stop()
 
-# Fetch Access historical and organise to dataframe
-historical = fetch_price_releases_access(token, limit=int(num_releases))
-access_df = organise_access_dataframe(historical)
+# Fetch regas reference data to get terminal UUID
+ref_data = fetch_regas_reference_data(token)
+term_match = ref_data[ref_data["TerminalName"].str.lower() == terminal.lower()]
+if term_match.empty:
+    st.warning(f"Terminal '{terminal}' not found in reference data.")
+    st.stop()
+terminal_uuid = term_match["TerminalUUID"].iloc[0]
+
+# Calculate date range for historical data
+# We'll fetch data for the most recent releases
+import datetime as dt
+end_date = dt.datetime.now().strftime("%Y-%m-%d")
+# Fetch enough historical data to cover the number of releases requested
+# Assuming weekly releases, fetch num_releases * 10 days to be safe
+days_back = int(num_releases) * 10
+start_date = (dt.datetime.now() - dt.timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+# Fetch regas costs using new endpoint
+access_df = fetch_historical_regas_costs(
+    token,
+    vessel_size='174000',
+    unit='usd-per-mmbtu',
+    start=start_date,
+    end=end_date,
+    terminal_uuid=terminal_uuid
+)
 
 # Fetch route history for the selected route
 histdf = routes_history(token, route_id, reldates[: int(num_releases)])
 
 # Build df2: first datapoint per release
 # Access (Regas) side
-a = access_df[access_df["Terminal"].str.lower() == terminal.lower()].copy()
-if a.empty:
+if access_df.empty:
     st.warning("No Access data for the selected terminal.")
     st.stop()
 
-# unique release dates (descending)
-rels = list(pd.to_datetime(a["Release Date"]).dropna().sort_values(ascending=False).unique())
-ag = a.groupby("Release Date")
+# Get unique release dates (descending)
+rels = list(access_df["ReleaseDate"].dropna().sort_values(ascending=False).unique())
+# Limit to the requested number of releases
+rels = rels[:int(num_releases)]
+
+# For each release date, get the first datapoint (first delivery month)
+ag = access_df.groupby("ReleaseDate")
 prices: list[float] = []
 for r in rels:
     try:
         g = ag.get_group(r)
+        # Sort by delivery month and take first
+        g_sorted = g.sort_values("DeliveryMonth")
+        prices.append(float(g_sorted["TotalRegasCost"].iloc[0]))
     except Exception:
         prices.append(float("nan"))
-        continue
-    # first datapoint for this release
-    prices.append(float(g["Total $/MMBtu"].iloc[0]))
 
 # Routes side (Spot only), first datapoint per release
 spot = histdf[histdf["Period"] == "Spot (Physical)"][["Release Date", "Cost USDperMMBtu"]].copy()
