@@ -106,7 +106,7 @@ axis_controls = add_axis_controls(expanded=True, data_df=data_sample, x_col='Rel
 sns.set_theme(style="whitegrid")
 
 if st.button("Generate Chart", type="primary"):
-    fig, ax = plt.subplots(figsize=(16, 6))
+    fig, ax = plt.subplots(figsize=(14, 6))
     ax.axhline(0, color='grey')
 
     uuid_a, _ = port_options[port_a]
