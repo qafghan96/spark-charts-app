@@ -35,12 +35,12 @@ data_type = st.radio(
 # Functions for fetching LNG Hubs data
 def fetch_live_hubs(access_token):
     """Fetch currently live/active LNG Hub posts"""
-    content = api_get("/beta/lng/hubs/fob/usg/live/", access_token, format='csv')
+    content = api_get("/v1.0/lng/hubs/active/", access_token, format='csv')
     return pd.read_csv(StringIO(content.decode('utf-8')))
 
 def fetch_historical_hubs(access_token):
     """Fetch historical/expired LNG Hub posts"""
-    content = api_get("/beta/lng/hubs/fob/usg/historical/", access_token, format='csv')
+    content = api_get("/beta/lng/hubs/inactive/", access_token, format='csv')
     return pd.read_csv(StringIO(content.decode('utf-8')))
 
 if st.button("Fetch Data", type="primary"):
