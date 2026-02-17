@@ -12,7 +12,7 @@ if APP_ROOT not in sys.path:
 
 from utils import get_credentials, get_access_token, api_get
 
-st.title("🏭 LNG Hubs (USGC) Data")
+st.title("🏭 LNG Hubs Data")
 st.caption("Access currently active and historical USGC LNG Hub posts including both swap and outright transactions.")
 
 # Get credentials
