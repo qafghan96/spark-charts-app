@@ -298,14 +298,16 @@ def get_credentials() -> Tuple[str, str]:
     return client_id, client_secret
 
 
-def get_access_token(client_id: str, client_secret: str, scopes: str) -> str:
+def get_access_token(client_id: str, client_secret: str, scopes: str | None = None) -> str:
     payload = f"{client_id}:{client_secret}".encode()
     headers = {
         "Authorization": b64encode(payload).decode(),
         "Accept": "application/json",
         "Content-Type": "application/json",
     }
-    body = {"grantType": "clientCredentials", "scopes": scopes}
+    body = {"grantType": "clientCredentials"}
+    if scopes:
+        body["scopes"] = scopes
     url = f"{API_BASE_URL}/oauth/token/"
     r = requests.post(url, headers=headers, data=json.dumps(body))
     r.raise_for_status()

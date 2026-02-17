@@ -2,7 +2,6 @@ import os
 import sys
 import streamlit as st
 import pandas as pd
-import json
 from io import StringIO
 
 # Ensure we can import sibling module "utils.py" when run as a Streamlit page
@@ -22,9 +21,8 @@ if not client_id or not client_secret:
     st.error("Missing Spark API credentials. Set streamlit secrets 'spark.client_id' and 'spark.client_secret' (or env vars).")
     st.stop()
 
-# Get access token
-scopes = "read:lng-freight-prices,read:routes"
-token = get_access_token(client_id, client_secret, scopes=scopes)
+# Get access token (no specific scopes required for LNG Hubs endpoint)
+token = get_access_token(client_id, client_secret)
 
 # Configuration
 st.subheader("Data Selection")
@@ -35,62 +33,32 @@ data_type = st.radio(
 )
 
 # Functions for fetching LNG Hubs data
-def fetch_live_hubs(access_token, format='csv'):
+def fetch_live_hubs(access_token):
     """Fetch currently live/active LNG Hub posts"""
-    uri = "/beta/lng/hubs/fob/usg/live/"
-    
-    if format == 'csv':
-        content = api_get(uri, access_token, format='csv')
-        return pd.read_csv(StringIO(content.decode('utf-8')))
-    else:
-        return api_get(uri, access_token, format='json')
+    content = api_get("/beta/lng/hubs/fob/usg/live/", access_token, format='csv')
+    return pd.read_csv(StringIO(content.decode('utf-8')))
 
-def fetch_historical_hubs(access_token, format='csv'):
+def fetch_historical_hubs(access_token):
     """Fetch historical/expired LNG Hub posts"""
-    uri = "/beta/lng/hubs/fob/usg/historical/"
-    
-    if format == 'csv':
-        content = api_get(uri, access_token, format='csv')
-        return pd.read_csv(StringIO(content.decode('utf-8')))
-    else:
-        return api_get(uri, access_token, format='json')
-
-@st.cache_data
-def get_hub_metadata(access_token):
-    """Get metadata including terminal codes"""
-    data = api_get("/beta/lng/hubs/fob/usg/live/", access_token, format='json')
-    return data.get('metaData', {})
+    content = api_get("/beta/lng/hubs/fob/usg/historical/", access_token, format='csv')
+    return pd.read_csv(StringIO(content.decode('utf-8')))
 
 if st.button("Fetch Data", type="primary"):
     with st.spinner(f"Fetching {data_type.lower()} LNG Hubs data..."):
         try:
             if data_type == "Live":
-                df = fetch_live_hubs(token, format='csv')
+                df = fetch_live_hubs(token)
                 data_title = "Live/Active LNG Hub Posts"
             else:
-                df = fetch_historical_hubs(token, format='csv')
+                df = fetch_historical_hubs(token)
                 data_title = "Historical/Expired LNG Hub Posts"
-            
+
             if df.empty:
                 st.warning(f"No {data_type.lower()} data available.")
             else:
                 # Display summary statistics
                 st.success(f"Successfully fetched {len(df)} {data_title.lower()}!")
-                
-                # Display metadata
-                with st.expander("📋 Terminal Codes Reference", expanded=False):
-                    try:
-                        metadata = get_hub_metadata(token)
-                        terminal_codes = metadata.get('terminalCodes', {})
-                        if terminal_codes:
-                            st.write("**Terminal Code Mappings:**")
-                            for uuid, code in terminal_codes.items():
-                                st.write(f"• **{code}**: `{uuid}`")
-                        else:
-                            st.info("No terminal code metadata available.")
-                    except Exception as e:
-                        st.warning(f"Could not fetch metadata: {e}")
-                
+
                 # Display data summary
                 st.subheader(f"📊 {data_title} Summary")
                 
