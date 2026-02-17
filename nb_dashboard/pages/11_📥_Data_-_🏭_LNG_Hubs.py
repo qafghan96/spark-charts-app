@@ -28,8 +28,8 @@ token = get_access_token(client_id, client_secret)
 st.subheader("Data Selection")
 data_type = st.radio(
     "Choose data type to download:",
-    options=["Live", "Historical"],
-    help="Live: Currently active hub posts. Historical: All expired posts."
+    options=["Live", "Historical", "Both"],
+    help="Live: Currently active hub posts. Historical: All expired posts. Both: Combined dataset of live and historical posts."
 )
 
 # Functions for fetching LNG Hubs data
@@ -49,9 +49,14 @@ if st.button("Fetch Data", type="primary"):
             if data_type == "Live":
                 df = fetch_live_hubs(token)
                 data_title = "Live/Active LNG Hub Posts"
-            else:
+            elif data_type == "Historical":
                 df = fetch_historical_hubs(token)
                 data_title = "Historical/Expired LNG Hub Posts"
+            else:  # Both
+                live_df = fetch_live_hubs(token)
+                hist_df = fetch_historical_hubs(token)
+                df = pd.concat([live_df, hist_df], ignore_index=True)
+                data_title = "Combined Live & Historical LNG Hub Posts"
 
             if df.empty:
                 st.warning(f"No {data_type.lower()} data available.")
@@ -252,7 +257,7 @@ if st.button("Fetch Data", type="primary"):
                     return dataframe.to_csv(index=False).encode('utf-8')
                 
                 csv_data = convert_df_to_csv(df)
-                filename = f"lng_hubs_{data_type.lower()}_data.csv"
+                filename = f"lng_hubs_{data_type.lower().replace(' ', '_')}_data.csv"
                 
                 st.download_button(
                     label=f"📥 Download {data_title} as CSV",
