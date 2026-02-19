@@ -185,7 +185,7 @@ if st.button("Generate Chart", type="primary"):
         else:
             # View window similar to notebook
             if not ref_df.empty:
-                plt.xlim([ref_df['Release Date'].iloc[-1]-pd.Timedelta(1, unit='day'), ref_df['Release Date'].iloc[0]+pd.Timedelta(6, unit='day')])
+                plt.xlim([ref_df['Release Date'].iloc[-1]-pd.Timedelta(1, unit='day'), ref_df['Release Date'].iloc[0]+pd.Timedelta(15, unit='day')])
                 
         plt.tight_layout()
         st.pyplot(fig)
