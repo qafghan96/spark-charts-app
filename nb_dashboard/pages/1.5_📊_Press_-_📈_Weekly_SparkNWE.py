@@ -62,7 +62,7 @@ else:
 
 # Add color controls for SparkNWE series
 series_names = [selected_label]
-default_colors = ["#4F41F4"]  # Blue (current chart color)
+default_colors = ["#06B6D4"]  # Cyan (current chart color)
 color_controls = add_color_controls(series_names, default_colors, expanded=True)
 
 # Add axis controls
