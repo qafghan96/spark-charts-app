@@ -187,41 +187,53 @@ if "gas_df" in st.session_state:
 
         plot_color = color_controls[series_label]
 
+        # Split by tenor
+        ticker_f_name, ticker_fo_name = GAS_TYPE_MAP[stored_gas_type]
+        df_f_plot  = df_period[df_period["TickerName"].str.lower() == ticker_f_name].copy()
+        df_fo_plot = df_period[df_period["TickerName"].str.lower() == ticker_fo_name].copy()
+
         sns.set_theme(style="whitegrid")
         fig, ax = plt.subplots(figsize=(16, 7))
 
-        ax.plot(
-            df_period["ReleaseDate"],
-            df_period["Close"],
-            linewidth=2.5,
-            color=plot_color,
-            label=series_label,
-        )
-        ax.plot(
-            df_period["ReleaseDate"], df_period["DailyHigh"],
-            color=plot_color, alpha=0.1,
-        )
-        ax.plot(
-            df_period["ReleaseDate"], df_period["DailyLow"],
-            color=plot_color, alpha=0.1,
-        )
-        ax.fill_between(
-            df_period["ReleaseDate"],
-            df_period["DailyLow"],
-            df_period["DailyHigh"],
-            alpha=0.2,
-            color=plot_color,
-        )
+        # Plot -fo (Forward) series — dashed, small square markers
+        if not df_fo_plot.empty:
+            fo_label = f"SparkLEBA-{stored_gas_type}-Fo ({selected_period})"
+            ax.plot(
+                df_fo_plot["ReleaseDate"], df_fo_plot["Close"],
+                linewidth=2.5, color=plot_color,
+                linestyle="--", marker="s", markersize=4,
+                label=fo_label,
+            )
+            ax.plot(df_fo_plot["ReleaseDate"], df_fo_plot["DailyHigh"], color=plot_color, alpha=0.1)
+            ax.plot(df_fo_plot["ReleaseDate"], df_fo_plot["DailyLow"],  color=plot_color, alpha=0.1)
+            ax.fill_between(
+                df_fo_plot["ReleaseDate"], df_fo_plot["DailyLow"], df_fo_plot["DailyHigh"],
+                alpha=0.2, color=plot_color,
+            )
+            ax.scatter(
+                df_fo_plot["ReleaseDate"].iloc[-1], df_fo_plot["Close"].iloc[-1],
+                color=plot_color, marker="o", s=120, zorder=5,
+            )
 
-        # Latest point marker
-        ax.scatter(
-            df_period["ReleaseDate"].iloc[-1],
-            df_period["Close"].iloc[-1],
-            color=plot_color,
-            marker="o",
-            s=120,
-            zorder=5,
-        )
+        # Plot -f (Front) series — solid, larger square markers
+        if not df_f_plot.empty:
+            f_label = f"SparkLEBA-{stored_gas_type}-F ({selected_period})"
+            ax.plot(
+                df_f_plot["ReleaseDate"], df_f_plot["Close"],
+                linewidth=2.5, color=plot_color,
+                linestyle="-", marker="s", markersize=6,
+                label=f_label,
+            )
+            ax.plot(df_f_plot["ReleaseDate"], df_f_plot["DailyHigh"], color=plot_color, alpha=0.1)
+            ax.plot(df_f_plot["ReleaseDate"], df_f_plot["DailyLow"],  color=plot_color, alpha=0.1)
+            ax.fill_between(
+                df_f_plot["ReleaseDate"], df_f_plot["DailyLow"], df_f_plot["DailyHigh"],
+                alpha=0.2, color=plot_color,
+            )
+            ax.scatter(
+                df_f_plot["ReleaseDate"].iloc[-1], df_f_plot["Close"].iloc[-1],
+                color=plot_color, marker="o", s=120, zorder=5,
+            )
 
         ax.set_xlabel("Release Date")
         ax.set_ylabel(stored_unit)
