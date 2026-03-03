@@ -210,10 +210,7 @@ if "gas_df" in st.session_state:
                 df_fo_plot["ReleaseDate"], df_fo_plot["DailyLow"], df_fo_plot["DailyHigh"],
                 alpha=0.2, color=plot_color,
             )
-            ax.scatter(
-                df_fo_plot["ReleaseDate"].iloc[-1], df_fo_plot["Close"].iloc[-1],
-                color=plot_color, marker="o", s=120, zorder=5,
-            )
+            
 
         # Plot -f (Front) series — solid, larger square markers
         if not df_f_plot.empty:
