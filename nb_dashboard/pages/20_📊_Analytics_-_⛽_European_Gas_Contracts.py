@@ -218,7 +218,7 @@ if "gas_df" in st.session_state:
             ax.plot(
                 df_f_plot["ReleaseDate"], df_f_plot["Close"],
                 linewidth=2.5, color=plot_color,
-                linestyle="-", marker="s", markersize=6,
+                linestyle="-", marker="o", markersize=6,
                 label=f_label,
             )
             ax.plot(df_f_plot["ReleaseDate"], df_f_plot["DailyHigh"], color=plot_color, alpha=0.1)
