@@ -47,8 +47,21 @@ token = get_access_token(client_id, client_secret, scopes=scopes)
 # Configuration
 limit = st.slider("Number of releases", min_value=50, max_value=1000, value=250, step=50)
 
+ticker_option = st.selectbox(
+    "Ticker",
+    options=["sparknwe-f (Outright)", "sparknwe-b-f (Basis)"],
+    index=0,
+)
+
+if ticker_option == "sparknwe-f (Outright)":
+    selected_ticker = "sparknwe-f"
+    selected_label = "SparkNWE-F (Outright)"
+else:
+    selected_ticker = "sparknwe-b-f"
+    selected_label = "SparkNWE-B-F (Basis)"
+
 # Add color controls for SparkNWE series
-series_names = ["SparkNWE-F (Outright)"]
+series_names = [selected_label]
 default_colors = ["#4F41F4"]  # Blue (current chart color)
 color_controls = add_color_controls(series_names, default_colors, expanded=True)
 
@@ -112,46 +125,39 @@ if st.button("Generate Chart", type="primary"):
         # Fetch data for both datasets
         sparkbasis = build_sparknwe_price_df(token, 'sparknwe-b-f', limit=limit)
         sparkoutright = build_sparknwe_price_df(token, 'sparknwe-f', limit=limit)
-        
-        if sparkoutright.empty:
-            st.error("No data available for SparkNWE outright prices")
+
+        plot_df = sparkoutright if selected_ticker == "sparknwe-f" else sparkbasis
+
+        if plot_df.empty:
+            st.error(f"No data available for {selected_label}")
             st.stop()
-        
+
         # Create the plot
         fig, ax = plt.subplots(figsize=(16, 7))
         ax.set_xlabel('Release Date')
-        
-        # Plot SparkNWE outright with confidence bands
-        # Get selected color for SparkNWE-F (Outright)
-        outright_color = color_controls["SparkNWE-F (Outright)"]
-        
-        ax.plot(sparkoutright['Release Date'], sparkoutright['Spark'], 
-                color=outright_color, linewidth=2.5, label='SparkNWE-F')
-        ax.plot(sparkoutright['Release Date'], sparkoutright['SparkMin'], 
-                color=outright_color, alpha=0.1)
-        ax.plot(sparkoutright['Release Date'], sparkoutright['SparkMax'], 
-                color=outright_color, alpha=0.1)
-        ax.fill_between(sparkoutright['Release Date'], sparkoutright['SparkMin'], 
-                       sparkoutright['SparkMax'], alpha=0.2, color=outright_color)
-        
+
+        plot_color = color_controls[selected_label]
+
+        ax.plot(plot_df['Release Date'], plot_df['Spark'],
+                color=plot_color, linewidth=2.5, label=selected_label)
+        ax.plot(plot_df['Release Date'], plot_df['SparkMin'],
+                color=plot_color, alpha=0.1)
+        ax.plot(plot_df['Release Date'], plot_df['SparkMax'],
+                color=plot_color, alpha=0.1)
+        ax.fill_between(plot_df['Release Date'], plot_df['SparkMin'],
+                        plot_df['SparkMax'], alpha=0.2, color=plot_color)
+
         # Add latest point marker
-        ax.scatter(sparkoutright['Release Date'].iloc[0], sparkoutright['Spark'].iloc[0], 
-                  color=outright_color, marker='o', s=120)
-        
-        # Apply axis limits using the utility function
-        all_data = [sparkoutright]
-        if not sparkbasis.empty:
-            all_data.append(sparkbasis)
-        
-        if all_data:
-            combined_data = pd.concat(all_data, ignore_index=True)
-            apply_axis_limits(ax, axis_controls, data_df=combined_data, y_cols=['Spark'])
-        
+        ax.scatter(plot_df['Release Date'].iloc[0], plot_df['Spark'].iloc[0],
+                   color=plot_color, marker='o', s=120)
+
+        apply_axis_limits(ax, axis_controls, data_df=plot_df, y_cols=['Spark'])
+
         sns.despine(left=True, bottom=True)
         ax.legend()
-        
+
         st.pyplot(fig)
-        
+
         # Store data for display
         st.session_state.sparknwe_data = {
             'outright': sparkoutright,
