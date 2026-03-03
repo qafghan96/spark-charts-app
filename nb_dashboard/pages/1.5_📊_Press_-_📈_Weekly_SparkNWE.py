@@ -151,6 +151,9 @@ if st.button("Generate Chart", type="primary"):
         ax.scatter(plot_df['Release Date'].iloc[0], plot_df['Spark'].iloc[0],
                    color=plot_color, marker='o', s=120)
 
+        if selected_ticker == "sparknwe-b-f":
+            ax.axhline(y=0, color='grey', linewidth=1.0, linestyle='--', zorder=1)
+
         apply_axis_limits(ax, axis_controls, data_df=plot_df, y_cols=['Spark'])
 
         sns.despine(left=True, bottom=True)
