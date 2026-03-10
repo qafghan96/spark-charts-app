@@ -1,27 +1,24 @@
+import io
 import os
 import sys
-import streamlit as st
-import pandas as pd
-import json
-import numpy as np
-from base64 import b64encode
-from urllib.parse import urljoin
-from urllib import request
-from urllib.error import HTTPError
-import time
+from datetime import datetime, timedelta
 
-# Ensure we can import sibling module "utils.py" when run as a Streamlit page
+import pandas as pd
+import streamlit as st
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if APP_ROOT not in sys.path:
     sys.path.insert(0, APP_ROOT)
 
-from utils import get_credentials, get_access_token
+from utils import get_credentials, get_access_token, api_get
 
 st.title("⛽ Netbacks Analysis")
-st.caption("Analyze netback data from different FoB ports with various routing options.")
+st.caption(
+    "Download netback data for a selected FoB port and routing option. "
+    "Fetches data from `/v1.0/netbacks/` using start/end date ranges for fast retrieval."
+)
 
-# Get credentials
 client_id, client_secret = get_credentials()
 if not client_id or not client_secret:
     st.error("Missing Spark API credentials. Set streamlit secrets 'spark.client_id' and 'spark.client_secret' (or env vars).")
@@ -30,345 +27,253 @@ if not client_id or not client_secret:
 scopes = "read:netbacks,read:access,read:prices,read:routes"
 token = get_access_token(client_id, client_secret, scopes=scopes)
 
-# API functions from the notebook
-API_BASE_URL = "https://api.sparkcommodities.com"
+# --- Helpers ---
+def fetch_reference_data(access_token: str):
+    content = api_get("/v1.0/netbacks/reference-data/", access_token)
+    ports = content["data"]["staticData"]["fobPorts"]
+    tickers = [p["uuid"] for p in ports]
+    names = [p["name"] for p in ports]
+    via_options = [p["availableViaPoints"] for p in ports]
+    return tickers, names, via_options
 
-def do_api_get_query(uri, access_token):
-    """After receiving an Access Token, we can request information from the API."""
-    url = urljoin(API_BASE_URL, uri)
-    
-    headers = {
-        "Authorization": "Bearer {}".format(access_token),
-        "Accept": "application/json",
-    }
-    
-    req = request.Request(url, headers=headers)
-    try:
-        response = request.urlopen(req)
-    except HTTPError as e:
-        st.error(f"HTTP Error: {e.code}")
-        st.stop()
-    
-    resp_content = response.read()
-    assert response.status == 200, resp_content
-    content = json.loads(resp_content)
-    return content
+def fetch_netbacks_csv(
+    access_token: str,
+    fob_uuid: str,
+    start: str,
+    end: str,
+    via: str | None = None,
+    laden: int | None = None,
+    ballast: int | None = None,
+) -> pd.DataFrame:
+    uri = f"/v1.0/netbacks/?fob-port={fob_uuid}&start={start}&end={end}"
+    if via:
+        uri += f"&via-point={via}"
+    if laden:
+        uri += f"&laden-congestion-days={laden}"
+    if ballast:
+        uri += f"&ballast-congestion-days={ballast}"
+    raw = api_get(uri, access_token, format="csv")
+    if not raw:
+        return pd.DataFrame()
+    df = pd.read_csv(io.StringIO(raw.decode("utf-8")))
+    if not df.empty:
+        df["ReleaseDate"] = pd.to_datetime(df["ReleaseDate"])
+        for col in df.columns[4:]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
 
-def list_netbacks(access_token):
-    """Fetch available netbacks reference data."""
-    content = do_api_get_query(uri="/v1.0/netbacks/reference-data/", access_token=access_token)
-    
-    tickers = []
-    fobPort_names = []
-    availablevia = []
+def fetch_netbacks_csv_chunked(
+    access_token: str,
+    fob_uuid: str,
+    start: datetime,
+    end: datetime,
+    via: str | None = None,
+    laden: int | None = None,
+    ballast: int | None = None,
+) -> pd.DataFrame:
+    """Fetch in ≤365-day windows as required by the API."""
+    chunks = []
+    chunk_start = start
+    total_days = max((end - start).days, 1)
+    fetched_days = 0
+    progress = st.progress(0)
+    status = st.empty()
 
-    for contract in content["data"]['staticData']['fobPorts']:
-        tickers.append(contract["uuid"])
-        fobPort_names.append(contract['name'])
-        availablevia.append(contract['availableViaPoints'])
-    
-    reldates = content["data"]['staticData']['sparkReleases']
-    dicto1 = content["data"]
-        
-    return tickers, fobPort_names, availablevia, reldates, dicto1
+    while chunk_start <= end:
+        chunk_end = min(chunk_start + timedelta(days=364), end)
+        status.text(f"Fetching {chunk_start.strftime('%Y-%m-%d')} → {chunk_end.strftime('%Y-%m-%d')} …")
+        chunk = fetch_netbacks_csv(
+            access_token, fob_uuid,
+            chunk_start.strftime("%Y-%m-%d"),
+            chunk_end.strftime("%Y-%m-%d"),
+            via=via, laden=laden, ballast=ballast,
+        )
+        if not chunk.empty:
+            chunks.append(chunk)
+        fetched_days += (chunk_end - chunk_start).days + 1
+        progress.progress(min(fetched_days / total_days, 1.0))
+        chunk_start = chunk_end + timedelta(days=1)
 
-def fetch_netback(access_token, ticker, release, via=None, laden=None, ballast=None):
-    """For a FoB port, fetch netback details for a specific release."""
-    query_params = "?fob-port={}".format(ticker)
-    if release is not None:
-        query_params += "&release-date={}".format(release)
-    if via is not None:
-        query_params += "&via-point={}".format(via)
-    if laden is not None:
-        query_params += "&laden-congestion-days={}".format(laden)
-    if ballast is not None:
-        query_params += "&ballast-congestion-days={}".format(ballast)
-    
-    url = "/v1.0/netbacks/{}".format(query_params)
-    content = do_api_get_query(uri=url, access_token=access_token)
-    
-    return content['data']
+    progress.empty()
+    status.empty()
+    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
 
-def netbacks(access_token, tickers, fobPort_names, tick, my_releases, my_via=None, laden=None, ballast=None):
-    """Process netbacks data and return as DataFrame."""
-    months = []
-    nea_outrights = []
-    nea_ttfbasis = []
-    nwe_outrights = []
-    nwe_ttfbasis = []
-    delta_outrights = []
-    delta_ttfbasis = []
-    release_date = []
-    max_outrights = []
-    max_ttfbasis = []
-    port = []
-    
-    # NEA Meta fields
-    nea_ttf_price = []
-    nea_ttf_basis_meta = []
-    nea_des_lng_price = []
-    nea_route_cost = []
-    nea_volume_adjustment = []
-    
-    # NWE Meta fields
-    nwe_ttf_price = []
-    nwe_ttf_basis_meta = []
-    nwe_des_lng_price = []
-    nwe_route_cost = []
-    nwe_volume_adjustment = []
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for rel_idx, r in enumerate(my_releases):
-        try:
-            status_text.text(f'Processing release {rel_idx + 1}/{len(my_releases)}: {r}')
-            progress_bar.progress((rel_idx + 1) / len(my_releases))
-            
-            my_dict = fetch_netback(access_token, tickers[tick], r, via=my_via, laden=laden, ballast=ballast)
-
-            for m in my_dict['netbacks']:
-                months.append(m['load']['month'])
-                nea_outrights.append(float(m['nea']['outright']['usdPerMMBtu']))
-                nea_ttfbasis.append(float(m['nea']['ttfBasis']['usdPerMMBtu']))
-                nwe_outrights.append(float(m['nwe']['outright']['usdPerMMBtu']))
-                nwe_ttfbasis.append(float(m['nwe']['ttfBasis']['usdPerMMBtu']))
-                delta_outrights.append(float(m['neaMinusNwe']['outright']['usdPerMMBtu']))
-                delta_ttfbasis.append(float(m['neaMinusNwe']['ttfBasis']['usdPerMMBtu']))
-                max_outrights.append(float(m['max']['outright']['usdPerMMBtu']))
-                max_ttfbasis.append(float(m['max']['ttfBasis']['usdPerMMBtu']))
-                release_date.append(r)
-                port.append(fobPort_names[tick])
-                
-                # Extract NEA Meta data
-                nea_meta = m.get('neaMeta', {})
-                nea_ttf_price.append(float(nea_meta.get('ttfPrice', {}).get('usdPerMMBtu', 0)))
-                nea_ttf_basis_meta.append(float(nea_meta.get('ttfBasis', {}).get('usdPerMMBtu', 0)))
-                nea_des_lng_price.append(float(nea_meta.get('desLngPrice', {}).get('usdPerMMBtu', 0)))
-                nea_route_cost.append(float(nea_meta.get('routeCost', {}).get('usdPerMMBtu', 0)))
-                nea_volume_adjustment.append(float(nea_meta.get('volumeAdjustment', {}).get('usdPerMMBtu', 0)))
-                
-                # Extract NWE Meta data
-                nwe_meta = m.get('nweMeta', {})
-                nwe_ttf_price.append(float(nwe_meta.get('ttfPrice', {}).get('usdPerMMBtu', 0)))
-                nwe_ttf_basis_meta.append(float(nwe_meta.get('ttfBasis', {}).get('usdPerMMBtu', 0)))
-                nwe_des_lng_price.append(float(nwe_meta.get('desLngPrice', {}).get('usdPerMMBtu', 0)))
-                nwe_route_cost.append(float(nwe_meta.get('routeCost', {}).get('usdPerMMBtu', 0)))
-                nwe_volume_adjustment.append(float(nwe_meta.get('volumeAdjustment', {}).get('usdPerMMBtu', 0)))
-            
-            time.sleep(0.5)  # Rate limiting
-                
-        except Exception as e:
-            st.warning(f'Error processing date {r}: {str(e)}')
-            continue
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    historical_df = pd.DataFrame({
-        'Release Date': release_date,
-        'FoB Port': port,
-        'Month': months,
-        'NEA Netback (Outright)': nea_outrights,
-        'NEA Netback (TTF Basis)': nea_ttfbasis,
-        'NWE Netback (Outright)': nwe_outrights,
-        'NWE Netback (TTF Basis)': nwe_ttfbasis,
-        'NEA-NWE Arb': delta_outrights,
-        'Max Outrights': max_outrights,
-        'Max TTF Basis': max_ttfbasis,
-        # NEA Meta fields
-        'NEA TTF Price': nea_ttf_price,
-        'NEA TTF Basis Meta': nea_ttf_basis_meta,
-        'NEA DES LNG Price': nea_des_lng_price,
-        'NEA Route Cost': nea_route_cost,
-        'NEA Volume Adjustment': nea_volume_adjustment,
-        # NWE Meta fields
-        'NWE TTF Price': nwe_ttf_price,
-        'NWE TTF Basis Meta': nwe_ttf_basis_meta,
-        'NWE DES LNG Price': nwe_des_lng_price,
-        'NWE Route Cost': nwe_route_cost,
-        'NWE Volume Adjustment': nwe_volume_adjustment,
+def rename_columns(df: pd.DataFrame, port_name: str) -> pd.DataFrame:
+    """Rename CSV columns to user-friendly display names."""
+    df = df.rename(columns={
+        "ReleaseDate":          "Release Date",
+        "LoadMonth":            "Month",
+        "LoadDate":             "Load Date",
+        "LoadMonthIndex":       "Month Index",
+        "NeaNetbackOutright":   "NEA Netback (Outright)",
+        "NeaNetbackTtfBasis":   "NEA Netback (TTF Basis)",
+        "NeaMetaTtfPrice":      "NEA TTF Price",
+        "NeaMetaTtfBasis":      "NEA TTF Basis Meta",
+        "NeaMetaDesLng":        "NEA DES LNG Price",
+        "NeaMetaRouteCost":     "NEA Route Cost",
+        "NeaMetaVolAdj":        "NEA Volume Adjustment",
+        "NweNetbackOutright":   "NWE Netback (Outright)",
+        "NweNetbackTtfBasis":   "NWE Netback (TTF Basis)",
+        "NweMetaTtfPrice":      "NWE TTF Price",
+        "NweMetaTtfBasis":      "NWE TTF Basis Meta",
+        "NweMetaDesLng":        "NWE DES LNG Price",
+        "NweMetaRouteCost":     "NWE Route Cost",
+        "NweMetaVolAdj":        "NWE Volume Adjustment",
+        "DeltaNeaNwe":          "NEA-NWE Arb",
     })
-    
-    # Convert date columns
-    if not historical_df.empty:
-        historical_df['Release Date'] = pd.to_datetime(historical_df['Release Date'])
-        historical_df['Month'] = pd.to_datetime(historical_df['Month'])
-    
-    return historical_df
+    df.insert(0, "FoB Port", port_name)
+    df["Month"] = pd.to_datetime(df["Month"], errors="coerce")
+    return df
 
-# Initialize data
-if 'netbacks_data' not in st.session_state:
-    with st.spinner("Loading reference data..."):
-        st.session_state.netbacks_data = list_netbacks(token)
 
-tickers, fobPort_names, availablevia, reldates, dicto1 = st.session_state.netbacks_data
+# --- Load reference data ---
+if "netbacks_ref" not in st.session_state:
+    with st.spinner("Loading reference data…"):
+        try:
+            tickers, fobPort_names, availablevia = fetch_reference_data(token)
+            st.session_state["netbacks_ref"] = (tickers, fobPort_names, availablevia)
+        except Exception as e:
+            st.error(f"Failed to load reference data: {e}")
+            st.stop()
 
-# UI Controls
+tickers, fobPort_names, availablevia = st.session_state["netbacks_ref"]
+
+# --- Configuration ---
 st.subheader("Configuration")
+
+today = datetime.today().date()
+one_year_ago = today - timedelta(days=365)
 
 col1, col2 = st.columns(2)
 with col1:
-    selected_port = st.selectbox("Select FoB Port", fobPort_names, index=fobPort_names.index('Sabine Pass') if 'Sabine Pass' in fobPort_names else 0)
+    selected_port = st.selectbox(
+        "FoB Port",
+        fobPort_names,
+        index=fobPort_names.index("Sabine Pass") if "Sabine Pass" in fobPort_names else 0,
+    )
     port_index = fobPort_names.index(selected_port)
-    
-    # Get available via points for selected port
-    available_via_points = availablevia[port_index] if availablevia[port_index] else ['cogh']
+    available_via_points = [v for v in availablevia[port_index] if v is not None] or ["cogh"]
     selected_via = st.selectbox("Via Point", available_via_points, index=0)
 
 with col2:
-    num_releases = st.slider("Number of releases", min_value=1, max_value=min(len(reldates), 500), value=10, step=1)
-    
-    # Advanced options
+    start_date = st.date_input("Start Date", value=one_year_ago)
+    end_date = st.date_input("End Date", value=today)
+
     with st.expander("Advanced Options"):
         laden_days = st.number_input("Laden Congestion Days", min_value=0, max_value=30, value=0, step=1)
         ballast_days = st.number_input("Ballast Congestion Days", min_value=0, max_value=30, value=0, step=1)
 
-# Display selected releases
-st.write(f"**Selected releases:** {reldates[:num_releases]}")
+start_dt = datetime.combine(start_date, datetime.min.time())
+end_dt = datetime.combine(end_date, datetime.min.time())
+span_days = (end_dt - start_dt).days
 
 if st.button("Fetch Netbacks Data", type="primary"):
-    with st.spinner("Fetching netbacks data..."):
-        try:
-            df = netbacks(
-                token, 
-                tickers, 
-                fobPort_names, 
-                port_index, 
-                reldates[:num_releases], 
-                my_via=selected_via,
-                laden=laden_days if laden_days > 0 else None,
-                ballast=ballast_days if ballast_days > 0 else None
-            )
-            
-            if not df.empty:
-                st.success(f"Successfully fetched {len(df)} rows of netbacks data!")
-                
-                # Store in session state
-                st.session_state.netbacks_df = df
-                
-                # Display the DataFrame
-                st.subheader(f"Netbacks Data - {selected_port}")
-                st.dataframe(df, use_container_width=True)
-                
-                # Download functionality
-                @st.cache_data
-                def convert_df(df):
-                    return df.to_csv(index=False).encode('utf-8')
-                
-                csv = convert_df(df)
-                
-                st.download_button(
-                    label="📥 Download data as CSV",
-                    data=csv,
-                    file_name=f'netbacks_{selected_port.lower().replace(" ", "_")}.csv',
-                    mime='text/csv',
-                    use_container_width=True
-                )
-                
-                # Basic statistics
-                st.subheader("Data Summary")
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Records", len(df))
-                with col2:
-                    st.metric("Unique Months", df['Month'].nunique())
-                with col3:
-                    st.metric("Date Range", f"{df['Release Date'].nunique()} releases")
-                with col4:
-                    avg_arb = df['NEA-NWE Arb'].mean()
-                    st.metric("Avg NEA-NWE Arb", f"${avg_arb:.3f}/MMBtu")
-                
-                # Summary statistics
-                st.subheader("Price Statistics ($/MMBtu)")
-                
-                # Display options
-                show_meta = st.checkbox("Show detailed breakdown (Meta fields)", value=False)
-                
-                if show_meta:
-                    # Detailed view with meta fields
-                    st.subheader("Netback Components Analysis")
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.write("**NEA Components**")
-                        nea_meta_stats = df[[
-                            'NEA TTF Price', 'NEA TTF Basis Meta', 'NEA DES LNG Price', 
-                            'NEA Route Cost', 'NEA Volume Adjustment', 'NEA Netback (Outright)'
-                        ]].describe()
-                        st.dataframe(nea_meta_stats, use_container_width=True)
-                    
-                    with col2:
-                        st.write("**NWE Components**")
-                        nwe_meta_stats = df[[
-                            'NWE TTF Price', 'NWE TTF Basis Meta', 'NWE DES LNG Price', 
-                            'NWE Route Cost', 'NWE Volume Adjustment', 'NWE Netback (Outright)'
-                        ]].describe()
-                        st.dataframe(nwe_meta_stats, use_container_width=True)
-                    
-                    # Component comparison
-                    st.subheader("Route Cost & Volume Adjustment Comparison")
-                    comp_df = pd.DataFrame({
-                        'NEA Route Cost': df['NEA Route Cost'],
-                        'NWE Route Cost': df['NWE Route Cost'],
-                        'NEA Volume Adj': df['NEA Volume Adjustment'],
-                        'NWE Volume Adj': df['NWE Volume Adjustment']
-                    })
-                    st.dataframe(comp_df.describe(), use_container_width=True)
-                
-                else:
-                    # Standard view
-                    summary_stats = df[['NEA Netback (Outright)', 'NWE Netback (Outright)', 'NEA-NWE Arb', 'Max Outrights']].describe()
-                    st.dataframe(summary_stats, use_container_width=True)
-                
-            else:
-                st.warning("No data returned. Please check your parameters and try again.")
-                
-        except Exception as e:
-            st.error(f"Error fetching data: {str(e)}")
+    fob_uuid = tickers[port_index]
+    laden = laden_days if laden_days > 0 else None
+    ballast = ballast_days if ballast_days > 0 else None
 
-# Show existing data if available
-if 'netbacks_df' in st.session_state and not st.session_state.netbacks_df.empty:
-    st.subheader("Current Data")
-    st.write(f"Showing data for **{st.session_state.netbacks_df['FoB Port'].iloc[0]}** via **{selected_via}**")
-    
-    # Data view options
+    with st.spinner("Fetching netbacks data…"):
+        try:
+            if span_days > 365:
+                raw_df = fetch_netbacks_csv_chunked(token, fob_uuid, start_dt, end_dt, via=selected_via, laden=laden, ballast=ballast)
+            else:
+                raw_df = fetch_netbacks_csv(
+                    token, fob_uuid,
+                    start_date.strftime("%Y-%m-%d"),
+                    end_date.strftime("%Y-%m-%d"),
+                    via=selected_via, laden=laden, ballast=ballast,
+                )
+
+            if raw_df.empty:
+                st.warning("No data returned. Check your parameters.")
+                st.stop()
+
+            df = rename_columns(raw_df, selected_port)
+            df = df.drop_duplicates()
+            df = df.sort_values("Release Date", ascending=False).reset_index(drop=True)
+
+            st.session_state["netbacks_df"] = df
+            st.session_state["netbacks_port"] = selected_port
+            st.session_state["netbacks_via"] = selected_via
+            st.success(f"✅ Fetched {len(df):,} rows of netbacks data!")
+
+        except Exception as e:
+            st.error(f"Error fetching data: {e}")
+            st.stop()
+
+if "netbacks_df" in st.session_state and not st.session_state["netbacks_df"].empty:
+    df: pd.DataFrame = st.session_state["netbacks_df"]
+    stored_port: str = st.session_state.get("netbacks_port", selected_port)
+    stored_via: str = st.session_state.get("netbacks_via", selected_via)
+
+    st.subheader(f"Netbacks Data — {stored_port} (via {stored_via})")
+
+    # Data view toggle
     view_option = st.radio(
-        "Select data view:",
-        ["Summary View", "Full Data with Meta", "Meta Components Only"],
-        horizontal=True
+        "View",
+        ["Summary", "Full Data", "Meta Components"],
+        horizontal=True,
     )
-    
-    if view_option == "Summary View":
-        # Standard columns only
-        summary_cols = ['Release Date', 'FoB Port', 'Month', 'NEA Netback (Outright)', 'NEA Netback (TTF Basis)', 
-                       'NWE Netback (Outright)', 'NWE Netback (TTF Basis)', 'NEA-NWE Arb', 'Max Outrights', 'Max TTF Basis']
-        st.dataframe(st.session_state.netbacks_df[summary_cols], use_container_width=True)
-        
-    elif view_option == "Full Data with Meta":
-        # All columns
-        st.dataframe(st.session_state.netbacks_df, use_container_width=True)
-        
-    else:  # Meta Components Only
-        # Just the meta breakdown fields
-        meta_cols = ['Release Date', 'Month', 'NEA TTF Price', 'NEA TTF Basis Meta', 'NEA DES LNG Price', 
-                    'NEA Route Cost', 'NEA Volume Adjustment', 'NWE TTF Price', 'NWE TTF Basis Meta', 
-                    'NWE DES LNG Price', 'NWE Route Cost', 'NWE Volume Adjustment']
-        st.dataframe(st.session_state.netbacks_df[meta_cols], use_container_width=True)
-        
-        # Add explanation
+
+    SUMMARY_COLS = [
+        "Release Date", "FoB Port", "Month", "Month Index",
+        "NEA Netback (Outright)", "NEA Netback (TTF Basis)",
+        "NWE Netback (Outright)", "NWE Netback (TTF Basis)",
+        "NEA-NWE Arb",
+    ]
+    META_COLS = [
+        "Release Date", "Month",
+        "NEA TTF Price", "NEA TTF Basis Meta", "NEA DES LNG Price", "NEA Route Cost", "NEA Volume Adjustment",
+        "NWE TTF Price", "NWE TTF Basis Meta", "NWE DES LNG Price", "NWE Route Cost", "NWE Volume Adjustment",
+    ]
+
+    if view_option == "Summary":
+        st.dataframe(df[[c for c in SUMMARY_COLS if c in df.columns]], use_container_width=True)
+    elif view_option == "Full Data":
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.dataframe(df[[c for c in META_COLS if c in df.columns]], use_container_width=True)
         with st.expander("📖 Meta Field Explanations"):
             st.markdown("""
-            **TTF Price**: The Title Transfer Facility (TTF) gas price component used in calculations
-            
-            **TTF Basis Meta**: The TTF basis component from the meta breakdown
-            
-            **DES LNG Price**: Delivered Ex Ship LNG price component
-            
-            **Route Cost**: The shipping/transportation cost for the specific route
-            
-            **Volume Adjustment**: Adjustments made for volume considerations in the netback calculation
-            
-            *Note: The final netback is calculated as: DES LNG Price - Route Cost + Volume Adjustment*
+            **TTF Price** — TTF gas price used in the netback calculation
+            **TTF Basis Meta** — TTF basis component
+            **DES LNG Price** — Delivered Ex-Ship LNG price
+            **Route Cost** — Shipping/transport cost for the route
+            **Volume Adjustment** — Volume-based adjustment
+            *Netback = DES LNG Price − Route Cost + Volume Adjustment*
             """)
+
+    # Download
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "📥 Download CSV",
+        data=csv_bytes,
+        file_name=f"netbacks_{stored_port.lower().replace(' ', '_')}_{stored_via}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+    # Summary stats
+    st.subheader("Data Summary")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Records", f"{len(df):,}")
+    c2.metric("Unique Release Dates", df["Release Date"].nunique())
+    c3.metric("Unique Months", df["Month"].nunique() if "Month" in df.columns else "—")
+    if "NEA-NWE Arb" in df.columns:
+        c4.metric("Avg NEA-NWE Arb", f"${df['NEA-NWE Arb'].mean():.3f}/MMBtu")
+
+    st.subheader("Price Statistics ($/MMBtu)")
+    show_meta = st.checkbox("Show meta breakdown", value=False)
+    if show_meta:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**NEA Components**")
+            nea_cols = [c for c in ["NEA TTF Price", "NEA TTF Basis Meta", "NEA DES LNG Price", "NEA Route Cost", "NEA Volume Adjustment", "NEA Netback (Outright)"] if c in df.columns]
+            st.dataframe(df[nea_cols].describe(), use_container_width=True)
+        with col2:
+            st.write("**NWE Components**")
+            nwe_cols = [c for c in ["NWE TTF Price", "NWE TTF Basis Meta", "NWE DES LNG Price", "NWE Route Cost", "NWE Volume Adjustment", "NWE Netback (Outright)"] if c in df.columns]
+            st.dataframe(df[nwe_cols].describe(), use_container_width=True)
+    else:
+        stat_cols = [c for c in ["NEA Netback (Outright)", "NWE Netback (Outright)", "NEA-NWE Arb"] if c in df.columns]
+        st.dataframe(df[stat_cols].describe(), use_container_width=True)
