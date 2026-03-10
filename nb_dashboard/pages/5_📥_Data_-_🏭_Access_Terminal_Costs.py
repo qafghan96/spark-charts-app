@@ -1,11 +1,11 @@
+import io
 import os
 import sys
-import streamlit as st
-import pandas as pd
-import json
-import requests
+from datetime import datetime, timedelta
 
-# Ensure we can import sibling module "utils.py" when run as a Streamlit page
+import pandas as pd
+import streamlit as st
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if APP_ROOT not in sys.path:
@@ -14,9 +14,11 @@ if APP_ROOT not in sys.path:
 from utils import get_credentials, get_access_token, api_get
 
 st.title("🏭 Access Terminal Costs")
-st.caption("Access terminal cost data from the Spark API with downloadable DataFrame functionality.")
+st.caption(
+    "Download LNG regasification terminal costs from the Spark API. "
+    "Fetches data from `/v1.0/lng/access/regas-costs/`."
+)
 
-# Get credentials
 client_id, client_secret = get_credentials()
 if not client_id or not client_secret:
     st.error("Missing Spark API credentials. Set streamlit secrets 'spark.client_id' and 'spark.client_secret' (or env vars).")
@@ -25,192 +27,161 @@ if not client_id or not client_secret:
 scopes = "read:access"
 token = get_access_token(client_id, client_secret, scopes=scopes)
 
-# API functions using the utils module
-def do_api_get_query(uri, access_token):
-    """After receiving an Access Token, we can request information from the API."""
-    try:
-        content = api_get(uri, access_token)
-        return content
-    except requests.exceptions.HTTPError as e:
-        st.error(f"HTTP Error: {e.response.status_code} - {e.response.text}")
-        st.error(f"Request URL: {e.response.url}")
-        st.stop()
-    except Exception as e:
-        st.error(f"API Error: {str(e)}")
-        st.stop()
+# --- Helpers ---
+def fetch_reference_data(access_token: str) -> pd.DataFrame:
+    raw = api_get("/v1.0/lng/access/regas-costs/reference-data/", access_token, format="csv")
+    return pd.read_csv(io.StringIO(raw.decode("utf-8")))
 
-def fetch_price_releases(access_token, limit=4, offset=None):
-    query_params = "?limit={}".format(limit)
-    if offset is not None:
-        query_params += "&offset={}".format(offset)
-    
-    content = do_api_get_query(
-        uri="/beta/sparkr/releases/{}".format(query_params), access_token=access_token
-    )
-    return content["data"]
-
-def organise_dataframe(latest):
-    """
-    This function sorts the API content into a dataframe. The columns available are Release Date, Terminal, Month, Vessel Size, $/MMBtu and €/MWh. 
-    Essentially, this function parses the Access database using the Month, Terminal and Vessel size columns as reference.
-    """
-    # create columns
-    data_dict = {
-        'Release Date':[],
-        'Terminal':[],
-        'Month':[],
-        'Vessel Size':[],
-        'Total $/MMBtu':[],
-        'Basic Slot (Berth)':[],
-        'Basic Slot (Unload/Stor/Regas)':[],
-        'Basic Slot (B/U/S/R)':[],
-        'Additional Storage':[],
-        'Additional Sendout':[],
-        'Gas in Kind': [],
-        'Entry Capacity':[],
-        'Commodity Charge':[]
-    }
-
-    # loop for each Terminal
-    for l in latest:
-        sizes_available = list(latest[0]['perVesselSize'].keys())
-
-        # loop for each available size
-        for s in sizes_available:
-            
-            # loop for each month (in the form: YYYY-MM-DD)
-            for month in range(len(l['perVesselSize'][f'{s}']['deliveryMonths'])):
-                
-                # assigning values to each column
-                data_dict['Release Date'].append(l["releaseDate"])
-                data_dict['Terminal'].append(l["terminalName"])
-                data_dict['Month'].append(l['perVesselSize'][f'{s}']['deliveryMonths'][month]['month'])
-                data_dict['Vessel Size'].append(s)
-                data_dict['Total $/MMBtu'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["total"]))
-                
-                data_dict['Basic Slot (Berth)'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['basic-slot-berth']['value']))
-                data_dict['Basic Slot (Unload/Stor/Regas)'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['basic-slot-unload-storage-regas']['value']))
-                data_dict['Basic Slot (B/U/S/R)'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['basic-slot-berth-unload-storage-regas']['value']))
-                data_dict['Additional Storage'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['additional-storage']['value']))
-                data_dict['Additional Sendout'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['additional-send-out']['value']))
-                data_dict['Gas in Kind'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['fuel-gas-losses-gas-in-kind']['value']))
-                data_dict['Entry Capacity'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['entry-capacity']['value']))
-                data_dict['Commodity Charge'].append(float(l['perVesselSize'][f'{s}']['deliveryMonths'][month]["costsInUsdPerMmbtu"]["breakdown"]['commodity-charge']['value']))
-                
-    # convert into dataframe
-    df = pd.DataFrame(data_dict)
-    
-    df['Month'] = pd.to_datetime(df['Month'])
-    df['Release Date'] = pd.to_datetime(df['Release Date'])
-    
+def fetch_regas_costs(
+    access_token: str,
+    vessel_size: str,
+    unit: str,
+    start: str,
+    end: str,
+    terminal_uuid: str | None = None,
+) -> pd.DataFrame:
+    uri = f"/v1.0/lng/access/regas-costs/?vessel-size={vessel_size}&unit={unit}&start={start}&end={end}"
+    if terminal_uuid:
+        uri += f"&terminal-uuid={terminal_uuid}"
+    raw = api_get(uri, access_token, format="csv")
+    if not raw:
+        return pd.DataFrame()
+    df = pd.read_csv(io.StringIO(raw.decode("utf-8")))
+    if not df.empty:
+        numeric_cols = df.columns[6:]
+        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+        df["ReleaseDate"] = pd.to_datetime(df["ReleaseDate"])
     return df
 
-def loop_historical_data(token, n30_offset):
-    # initialise first set of historical data and initialising dataframe
-    historical = fetch_price_releases(access_token=token, limit=30)
-    hist_df = organise_dataframe(historical)
+def fetch_regas_costs_chunked(
+    access_token: str,
+    vessel_size: str,
+    unit: str,
+    start: datetime,
+    end: datetime,
+    terminal_uuid: str | None = None,
+) -> pd.DataFrame:
+    """Fetch in ≤365-day chunks to respect the API's max date span."""
+    chunks = []
+    chunk_start = start
+    progress = st.progress(0)
+    status = st.empty()
+    total_days = (end - start).days
+    fetched_days = 0
 
-    # Looping through earlier historical data and adding to the historical dataframe
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i in range(1, n30_offset+1):
-        status_text.text(f'Fetching batch {i}/{n30_offset}...')
-        progress_bar.progress(i / n30_offset)
-        
-        historical = fetch_price_releases(access_token=token, limit=30, offset=i*30)
-        new_data = organise_dataframe(historical)
-        hist_df = pd.concat([hist_df, new_data], ignore_index=True)
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    return hist_df
+    while chunk_start < end:
+        chunk_end = min(chunk_start + timedelta(days=364), end)
+        status.text(f"Fetching {chunk_start.strftime('%Y-%m-%d')} → {chunk_end.strftime('%Y-%m-%d')} …")
+        df_chunk = fetch_regas_costs(
+            access_token, vessel_size, unit,
+            chunk_start.strftime("%Y-%m-%d"),
+            chunk_end.strftime("%Y-%m-%d"),
+            terminal_uuid,
+        )
+        if not df_chunk.empty:
+            chunks.append(df_chunk)
+        fetched_days += (chunk_end - chunk_start).days
+        progress.progress(min(fetched_days / total_days, 1.0))
+        chunk_start = chunk_end + timedelta(days=1)
 
-# UI Controls
-st.subheader("Data Configuration")
+    progress.empty()
+    status.empty()
+    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
 
-col1, col2 = st.columns(2)
+
+# --- Load reference data (terminal list) ---
+if "regas_ref_df" not in st.session_state:
+    with st.spinner("Loading terminal reference data…"):
+        try:
+            st.session_state["regas_ref_df"] = fetch_reference_data(token)
+        except Exception as e:
+            st.error(f"Failed to load reference data: {e}")
+            st.stop()
+
+ref_df: pd.DataFrame = st.session_state["regas_ref_df"]
+terminal_options = ["All Terminals"] + sorted(ref_df["TerminalName"].dropna().tolist())
+
+# --- Configuration ---
+st.subheader("Configuration")
+
+today = datetime.today().date()
+one_year_ago = today - timedelta(days=365)
+
+col1, col2, col3, col4 = st.columns(4)
+
 with col1:
-    data_limit = st.slider("Number of releases", min_value=1, max_value=20, value=3, step=1)
+    vessel_size = st.selectbox(
+        "Vessel Size (cbm)",
+        options=["174000", "160000", "145000"],
+        index=0,
+    )
+
 with col2:
-    use_extended_data = st.checkbox("Use extended historical data", value=False)
-    if use_extended_data:
-        n30_offset = st.slider("Number of 30-release batches", min_value=1, max_value=50, value=1, step=1)
+    unit_label = st.selectbox("Unit", options=["USD/MMBtu", "EUR/MWh"], index=0)
+    unit = "usd-per-mmbtu" if unit_label == "USD/MMBtu" else "eur-per-mwh"
 
-# Debug information
-with st.expander("🔍 Debug Information", expanded=False):
-    st.write("**API Endpoint being used:**")
-    st.code("/beta/sparkr/releases/")
-    st.write("**Scopes:**")
-    st.code("read:access")
-    if token:
-        st.success("✅ Access token obtained successfully")
-    else:
-        st.error("❌ Failed to obtain access token")
-    
-    if st.button("🧪 Test API Connection"):
-        try:
-            test_result = do_api_get_query("/beta/sparkr/releases/?limit=1", token)
-            st.success("✅ API connection successful!")
-            st.json(test_result)
-        except Exception as e:
-            st.error(f"❌ API test failed: {str(e)}")
+with col3:
+    start_date = st.date_input("Start Date", value=one_year_ago)
 
-if st.button("Fetch Data"):
-    with st.spinner("Fetching data from Spark API..."):
+with col4:
+    end_date = st.date_input("End Date", value=today)
+
+terminal_filter = st.selectbox("Terminal Filter", options=terminal_options, index=0)
+selected_uuid = None
+if terminal_filter != "All Terminals":
+    row = ref_df[ref_df["TerminalName"] == terminal_filter]
+    if not row.empty:
+        selected_uuid = row["TerminalUUID"].iloc[0]
+
+with st.expander("📋 Available Terminals", expanded=False):
+    st.dataframe(ref_df, use_container_width=True)
+
+if st.button("Fetch Data", type="primary"):
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date, datetime.min.time())
+    span_days = (end_dt - start_dt).days
+
+    with st.spinner("Fetching regas cost data…"):
         try:
-            if use_extended_data:
-                hist_df = loop_historical_data(token, n30_offset)
+            if span_days > 365:
+                df = fetch_regas_costs_chunked(token, vessel_size, unit, start_dt, end_dt, selected_uuid)
             else:
-                historical = fetch_price_releases(token, limit=data_limit)
-                hist_df = organise_dataframe(historical)
-            
-            st.success(f"Successfully fetched {len(hist_df)} rows of data!")
-            
-            # Display the DataFrame
-            st.subheader("Access Terminal Costs Data")
-            st.dataframe(hist_df, use_container_width=True)
-            
-            # Download functionality
-            @st.cache_data
-            def convert_df(df):
-                return df.to_csv(index=False).encode('utf-8')
-            
-            csv = convert_df(hist_df)
-            
-            st.download_button(
-                label="📥 Download data as CSV",
-                data=csv,
-                file_name='access_terminal_costs.csv',
-                mime='text/csv',
-                use_container_width=True
-            )
-            
-            # Basic statistics
-            st.subheader("Data Summary")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Records", len(hist_df))
-            with col2:
-                st.metric("Terminals", hist_df['Terminal'].nunique())
-            with col3:
-                st.metric("Vessel Sizes", hist_df['Vessel Size'].nunique())
-            with col4:
-                st.metric("Date Range", f"{hist_df['Release Date'].nunique()} releases")
-                
-        except requests.exceptions.HTTPError as e:
-            st.error(f"HTTP Error: {e.response.status_code}")
-            st.error(f"Response text: {e.response.text}")
-            st.error(f"Request URL: {e.response.url}")
-            if hasattr(e.response, 'json'):
-                try:
-                    error_json = e.response.json()
-                    st.error(f"API Error Details: {json.dumps(error_json, indent=2)}")
-                except:
-                    pass
+                df = fetch_regas_costs(
+                    token, vessel_size, unit,
+                    start_date.strftime("%Y-%m-%d"),
+                    end_date.strftime("%Y-%m-%d"),
+                    selected_uuid,
+                )
+
+            if df.empty:
+                st.warning("No data returned. Check your parameters.")
+                st.stop()
+
+            st.session_state["regas_df"] = df
+            st.success(f"✅ Fetched {len(df):,} rows.")
+
         except Exception as e:
-            st.error(f"Error fetching data: {str(e)}")
-            st.error(f"Error type: {type(e).__name__}")
-            import traceback
-            st.error(f"Full traceback: {traceback.format_exc()}")
+            st.error(f"Error fetching data: {e}")
+            st.stop()
+
+if "regas_df" in st.session_state:
+    df: pd.DataFrame = st.session_state["regas_df"]
+
+    st.subheader("Data")
+    st.dataframe(df, use_container_width=True)
+
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    fname = f"regas_costs_{vessel_size}cbm_{unit}"
+    if terminal_filter != "All Terminals":
+        fname += f"_{terminal_filter.replace(' ', '_')}"
+    fname += ".csv"
+
+    st.download_button("📥 Download CSV", data=csv_bytes, file_name=fname, mime="text/csv", use_container_width=True)
+
+    st.subheader("Summary")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Rows", f"{len(df):,}")
+    c2.metric("Terminals", df["TerminalName"].nunique() if "TerminalName" in df.columns else "—")
+    c3.metric("Release Dates", df["ReleaseDate"].nunique() if "ReleaseDate" in df.columns else "—")
+    if "ReleaseDate" in df.columns and not df["ReleaseDate"].isna().all():
+        c4.metric("Latest Release", df["ReleaseDate"].max().strftime("%Y-%m-%d"))

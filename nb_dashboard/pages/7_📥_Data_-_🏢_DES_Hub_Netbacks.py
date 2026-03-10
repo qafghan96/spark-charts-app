@@ -1,25 +1,24 @@
+import io
 import os
 import sys
-import streamlit as st
-import pandas as pd
-import json
-from base64 import b64encode
-from urllib.parse import urljoin
-from urllib import request
-from urllib.error import HTTPError
+from datetime import datetime, timedelta
 
-# Ensure we can import sibling module "utils.py" when run as a Streamlit page
+import pandas as pd
+import streamlit as st
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 APP_ROOT = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if APP_ROOT not in sys.path:
     sys.path.insert(0, APP_ROOT)
 
-from utils import get_credentials, get_access_token
+from utils import get_credentials, get_access_token, api_get
 
 st.title("🏢 DES Hub Netbacks")
-st.caption("Access DES Hub Netbacks data showing regasification costs and netback prices across European terminals.")
+st.caption(
+    "Download DES Hub Netback prices across European LNG terminals from the Spark API. "
+    "Fetches data from `/v1.0/lng/access/des-hub-netbacks/`."
+)
 
-# Get credentials
 client_id, client_secret = get_credentials()
 if not client_id or not client_secret:
     st.error("Missing Spark API credentials. Set streamlit secrets 'spark.client_id' and 'spark.client_secret' (or env vars).")
@@ -28,245 +27,167 @@ if not client_id or not client_secret:
 scopes = "read:access"
 token = get_access_token(client_id, client_secret, scopes=scopes)
 
-# API functions from the notebook
-API_BASE_URL = "https://api.sparkcommodities.com"
+# --- Helpers ---
+def fetch_reference_data(access_token: str) -> pd.DataFrame:
+    raw = api_get("/v1.0/lng/access/des-hub-netbacks/reference-data/", access_token, format="csv")
+    return pd.read_csv(io.StringIO(raw.decode("utf-8")))
 
-def do_api_get_query(uri, access_token):
-    """After receiving an Access Token, we can request information from the API."""
-    url = urljoin(API_BASE_URL, uri)
-    
-    headers = {
-        "Authorization": "Bearer {}".format(access_token),
-        "accept": "application/json",
-    }
-    
-    req = request.Request(url, headers=headers)
-    try:
-        response = request.urlopen(req)
-    except HTTPError as e:
-        st.error(f"HTTP Error: {e.code}")
-        st.stop()
-    
-    resp_content = response.read()
-    assert response.status == 200, resp_content
-    content = json.loads(resp_content)
-    return content
-
-def fetch_price_releases(access_token, unit, limit=None, offset=None, terminal=None):
-    """Fetch DES Hub Netbacks data with specified parameters."""
-    query_params = "?unit={}".format(unit)
-    if limit is not None:
-        query_params += "&limit={}".format(limit)
-    if offset is not None:
-        query_params += "&offset={}".format(offset)
-    if terminal is not None:
-        query_params += "&terminal={}".format(terminal)
-
-    content = do_api_get_query(
-        uri="/beta/access/des-hub-netbacks/{}".format(query_params), access_token=access_token
-    )
-    return content
-
-def organise_dataframe(data):
-    """
-    This function sorts the API content into a dataframe with DES Hub Netbacks data.
-    """
-    # create columns
-    data_dict = {
-        'Release Date':[],
-        'Terminal':[],
-        'Month Index':[],
-        'Delivery Month':[],
-        'DES Hub Netback - TTF Basis':[],
-        'DES Hub Netback - Outright':[],
-        'Total Regas':[],
-        'Basic Slot (Berth)':[],
-        'Basic Slot (Unload/Stor/Regas)':[],
-        'Basic Slot (B/U/S/R)':[],
-        'Additional Storage':[],
-        'Additional Sendout':[],
-        'Gas in Kind': [],
-        'Entry Capacity':[],
-        'Commodity Charge':[]
-    }
-
-    # loop for each data point
-    for l in data['data']:
-        # assigning values to each column
-        data_dict['Release Date'].append(l["releaseDate"])
-        data_dict['Terminal'].append(data['metaData']['terminals'][l['terminalUuid']])
-        data_dict['Month Index'].append(l['monthIndex'])
-        data_dict['Delivery Month'].append(l['deliveryMonth'])
-
-        data_dict['DES Hub Netback - TTF Basis'].append(float(l['netbackTtfBasis']))
-        data_dict['DES Hub Netback - Outright'].append(float(l['netbackOutright']))
-        data_dict['Total Regas'].append(float(l['totalRegasificationCost']))
-        data_dict['Basic Slot (Berth)'].append(float(l['slotBerth']))
-        data_dict['Basic Slot (Unload/Stor/Regas)'].append(float(l['slotUnloadStorageRegas']))
-        data_dict['Basic Slot (B/U/S/R)'].append(float(l['slotBerthUnloadStorageRegas']))
-        data_dict['Additional Storage'].append(float(l['additionalStorage']))
-        data_dict['Additional Sendout'].append(float(l['additionalSendout']))
-        data_dict['Gas in Kind'].append(float(l['gasInKind']))
-        data_dict['Entry Capacity'].append(float(l['entryCapacity']))
-        data_dict['Commodity Charge'].append(float(l['commodityCharge']))
-    
-    # convert into dataframe
-    df = pd.DataFrame(data_dict)
-    
+def fetch_des_hub_netbacks(
+    access_token: str,
+    unit: str,
+    start: str,
+    end: str,
+    terminal_uuid: str | None = None,
+) -> pd.DataFrame:
+    uri = f"/v1.0/lng/access/des-hub-netbacks/?unit={unit}&start={start}&end={end}"
+    if terminal_uuid:
+        uri += f"&terminal-uuid={terminal_uuid}"
+    raw = api_get(uri, access_token, format="csv")
+    if not raw:
+        return pd.DataFrame()
+    df = pd.read_csv(io.StringIO(raw.decode("utf-8")))
     if not df.empty:
-        df['Delivery Month'] = pd.to_datetime(df['Delivery Month'])
-        df['Release Date'] = pd.to_datetime(df['Release Date'])
-    
+        numeric_cols = df.columns[8:]
+        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+        df["ReleaseDate"] = pd.to_datetime(df["ReleaseDate"])
     return df
 
-def loop_historical_data(access_token, unit, n_offset, terminal=None):
-    """Fetch multiple batches of historical data."""
-    # initialise first set of historical data
-    historical = fetch_price_releases(access_token, unit=unit, limit=30)
-    hist_df = organise_dataframe(historical)
+def fetch_des_hub_netbacks_chunked(
+    access_token: str,
+    unit: str,
+    start: datetime,
+    end: datetime,
+    terminal_uuid: str | None = None,
+) -> pd.DataFrame:
+    """Fetch in ≤365-day chunks to respect the API's max date span."""
+    chunks = []
+    chunk_start = start
+    progress = st.progress(0)
+    status = st.empty()
+    total_days = (end - start).days
+    fetched_days = 0
 
-    # Progress tracking
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    # Looping through earlier historical data and adding to the historical dataframe
-    for i in range(1, n_offset+1):
-        status_text.text(f'Fetching batch {i}/{n_offset}...')
-        progress_bar.progress(i / n_offset)
-        
-        historical = fetch_price_releases(access_token, unit=unit, limit=30, offset=i*30, terminal=terminal)
-        new_data = organise_dataframe(historical)
-        hist_df = pd.concat([hist_df, new_data], ignore_index=True)
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    return hist_df
+    while chunk_start < end:
+        chunk_end = min(chunk_start + timedelta(days=364), end)
+        status.text(f"Fetching {chunk_start.strftime('%Y-%m-%d')} → {chunk_end.strftime('%Y-%m-%d')} …")
+        df_chunk = fetch_des_hub_netbacks(
+            access_token, unit,
+            chunk_start.strftime("%Y-%m-%d"),
+            chunk_end.strftime("%Y-%m-%d"),
+            terminal_uuid,
+        )
+        if not df_chunk.empty:
+            chunks.append(df_chunk)
+        fetched_days += (chunk_end - chunk_start).days
+        progress.progress(min(fetched_days / total_days, 1.0))
+        chunk_start = chunk_end + timedelta(days=1)
 
-# Get available terminals by making an initial call
-if 'terminal_data' not in st.session_state:
-    with st.spinner("Loading terminal reference data..."):
-        sample_data = fetch_price_releases(token, unit='usd-per-mmbtu', limit=1)
-        st.session_state.terminal_data = sample_data['metaData']['terminals']
+    progress.empty()
+    status.empty()
+    return pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()
 
-available_terminals = st.session_state.terminal_data
-terminal_names = list(available_terminals.values())
-terminal_names.sort()
 
-# UI Controls
+# --- Load reference data (terminal list) ---
+if "deshub_ref_df" not in st.session_state:
+    with st.spinner("Loading terminal reference data…"):
+        try:
+            st.session_state["deshub_ref_df"] = fetch_reference_data(token)
+        except Exception as e:
+            st.error(f"Failed to load reference data: {e}")
+            st.stop()
+
+ref_df: pd.DataFrame = st.session_state["deshub_ref_df"]
+terminal_options = ["All Terminals"] + sorted(ref_df["TerminalName"].dropna().tolist())
+
+# --- Configuration ---
 st.subheader("Configuration")
 
-col1, col2 = st.columns(2)
+today = datetime.today().date()
+one_year_ago = today - timedelta(days=365)
+
+col1, col2, col3, col4 = st.columns(4)
+
 with col1:
-    unit = st.selectbox("Unit", ["usd-per-mmbtu", "eur-per-mwh"], index=0)
-    
-    terminal_filter = st.selectbox(
-        "Terminal Filter", 
-        ["All Terminals"] + terminal_names,
-        index=0,
-        help="Select a specific terminal or view all terminals"
-    )
-    selected_terminal = None if terminal_filter == "All Terminals" else terminal_filter
+    unit_label = st.selectbox("Unit", options=["USD/MMBtu", "EUR/MWh"], index=0)
+    unit = "usd-per-mmbtu" if unit_label == "USD/MMBtu" else "eur-per-mwh"
 
 with col2:
-    data_limit = st.slider("Number of releases per batch", min_value=1, max_value=30, value=10, step=1)
-    
-    use_extended_data = st.checkbox("Use extended historical data", value=False)
-    if use_extended_data:
-        n_offset = st.slider("Number of 30-release batches", min_value=1, max_value=50, value=2, step=1)
+    terminal_filter = st.selectbox("Terminal Filter", options=terminal_options, index=0)
+    selected_uuid = None
+    if terminal_filter != "All Terminals":
+        row = ref_df[ref_df["TerminalName"] == terminal_filter]
+        if not row.empty:
+            selected_uuid = row["TerminalUUID"].iloc[0]
 
-# Display configuration info
-if selected_terminal:
-    st.info(f"**Configuration:** Fetching {unit} data for **{selected_terminal}** terminal")
-else:
-    st.info(f"**Configuration:** Fetching {unit} data for **all terminals**")
+with col3:
+    start_date = st.date_input("Start Date", value=one_year_ago)
 
-if st.button("Fetch DES Hub Netbacks Data", type="primary"):
-    with st.spinner("Fetching DES Hub Netbacks data..."):
+with col4:
+    end_date = st.date_input("End Date", value=today)
+
+with st.expander("📋 Available Terminals", expanded=False):
+    st.dataframe(ref_df, use_container_width=True)
+
+if st.button("Fetch Data", type="primary"):
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date, datetime.min.time())
+    span_days = (end_dt - start_dt).days
+
+    with st.spinner("Fetching DES Hub Netbacks data…"):
         try:
-            if use_extended_data:
-                hist_df = loop_historical_data(token, unit, n_offset, terminal=selected_terminal)
+            if span_days > 365:
+                df = fetch_des_hub_netbacks_chunked(token, unit, start_dt, end_dt, selected_uuid)
             else:
-                historical = fetch_price_releases(token, unit=unit, limit=data_limit, terminal=selected_terminal)
-                hist_df = organise_dataframe(historical)
-            
-            if not hist_df.empty:
-                st.success(f"Successfully fetched {len(hist_df)} rows of DES Hub Netbacks data!")
-                
-                # Store in session state
-                st.session_state.deshub_df = hist_df
-                
-                # Display the DataFrame
-                st.subheader("DES Hub Netbacks Data")
-                st.dataframe(hist_df, use_container_width=True)
-                
-                # Download functionality
-                @st.cache_data
-                def convert_df(df):
-                    return df.to_csv(index=False).encode('utf-8')
-                
-                csv = convert_df(hist_df)
-                
-                filename = f'des_hub_netbacks_{unit}'
-                if selected_terminal:
-                    filename += f'_{selected_terminal}'
-                filename += '.csv'
-                
-                st.download_button(
-                    label="📥 Download data as CSV",
-                    data=csv,
-                    file_name=filename,
-                    mime='text/csv',
-                    use_container_width=True
+                df = fetch_des_hub_netbacks(
+                    token, unit,
+                    start_date.strftime("%Y-%m-%d"),
+                    end_date.strftime("%Y-%m-%d"),
+                    selected_uuid,
                 )
-                
-                # Basic statistics
-                st.subheader("Data Summary")
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Records", len(hist_df))
-                with col2:
-                    st.metric("Terminals", hist_df['Terminal'].nunique())
-                with col3:
-                    st.metric("Release Dates", hist_df['Release Date'].nunique())
-                with col4:
-                    avg_netback = hist_df['DES Hub Netback - Outright'].mean()
-                    unit_display = "$/MMBtu" if unit == "usd-per-mmbtu" else "€/MWh"
-                    st.metric("Avg Netback", f"{avg_netback:.3f} {unit_display}")
-                
-                # Detailed statistics
-                st.subheader("Price Statistics")
-                numeric_cols = [
-                    'DES Hub Netback - TTF Basis', 
-                    'DES Hub Netback - Outright', 
-                    'Total Regas',
-                    'Basic Slot (B/U/S/R)',
-                    'Gas in Kind',
-                    'Entry Capacity'
-                ]
-                summary_stats = hist_df[numeric_cols].describe()
-                st.dataframe(summary_stats, use_container_width=True)
-                
-                # Terminal breakdown if showing all terminals
-                if not selected_terminal and hist_df['Terminal'].nunique() > 1:
-                    st.subheader("By Terminal")
-                    terminal_summary = hist_df.groupby('Terminal').agg({
-                        'DES Hub Netback - Outright': ['mean', 'min', 'max'],
-                        'Total Regas': 'mean',
-                        'Release Date': 'count'
-                    }).round(3)
-                    terminal_summary.columns = ['Avg Netback', 'Min Netback', 'Max Netback', 'Avg Regas', 'Records']
-                    st.dataframe(terminal_summary, use_container_width=True)
-                
-            else:
-                st.warning("No data returned. Please check your parameters and try again.")
-                
-        except Exception as e:
-            st.error(f"Error fetching data: {str(e)}")
 
-# Show existing data if available
-if 'deshub_df' in st.session_state and not st.session_state.deshub_df.empty:
-    st.subheader("Current Data Preview")
-    df = st.session_state.deshub_df
-    st.write(f"Showing {len(df)} records across {df['Terminal'].nunique()} terminal(s)")
-    st.dataframe(df.head(10), use_container_width=True)
+            if df.empty:
+                st.warning("No data returned. Check your parameters.")
+                st.stop()
+
+            st.session_state["deshub_df"] = df
+            st.session_state["deshub_unit"] = unit_label
+            st.session_state["deshub_terminal"] = terminal_filter
+            st.success(f"✅ Fetched {len(df):,} rows.")
+
+        except Exception as e:
+            st.error(f"Error fetching data: {e}")
+            st.stop()
+
+if "deshub_df" in st.session_state:
+    df: pd.DataFrame = st.session_state["deshub_df"]
+    stored_unit: str = st.session_state.get("deshub_unit", unit_label)
+    stored_terminal: str = st.session_state.get("deshub_terminal", terminal_filter)
+
+    st.subheader("Data")
+    st.dataframe(df, use_container_width=True)
+
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    fname = f"des_hub_netbacks_{stored_unit.replace('/', '_')}"
+    if stored_terminal != "All Terminals":
+        fname += f"_{stored_terminal.replace(' ', '_')}"
+    fname += ".csv"
+
+    st.download_button("📥 Download CSV", data=csv_bytes, file_name=fname, mime="text/csv", use_container_width=True)
+
+    st.subheader("Summary")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Rows", f"{len(df):,}")
+    c2.metric("Terminals", df["TerminalName"].nunique() if "TerminalName" in df.columns else "—")
+    c3.metric("Release Dates", df["ReleaseDate"].nunique() if "ReleaseDate" in df.columns else "—")
+    if "ReleaseDate" in df.columns and not df["ReleaseDate"].isna().all():
+        c4.metric("Latest Release", df["ReleaseDate"].max().strftime("%Y-%m-%d"))
+
+    # Terminal breakdown
+    if "TerminalName" in df.columns and df["TerminalName"].nunique() > 1:
+        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        if numeric_cols:
+            st.subheader("By Terminal")
+            st.dataframe(
+                df.groupby("TerminalName")[numeric_cols].mean().round(3),
+                use_container_width=True,
+            )
